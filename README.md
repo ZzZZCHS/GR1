@@ -14,5 +14,5 @@ add `from collections.abc import *` in collections/__init__.py
 ```
 
 ### Path setup
-ln -s /mnt/hwfile/OpenRobotLab/chenyilun/pretrain/ ./pretrain/
+ln -s /mnt/hwfile/OpenRobotLab/chenyilun/pretrain/ ./
 

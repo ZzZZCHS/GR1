@@ -210,7 +210,7 @@ def train_one_epoch_calvin(
                         "loss_calvin": loss.item() * args.gradient_accumulation_steps,
                         "loss_arm_action": loss_arm_action.item() * args.gradient_accumulation_steps,
                         "loss_gripper_action": loss_gripper_action.item() * args.gradient_accumulation_steps,
-                        "loss_image": loss_image.item() * args.gradient_accumulation_steps if not args.reconstruct_self and not args.reconstruct_latent else 0.0,
+                        "loss_image": loss_image.item() * args.gradient_accumulation_steps,
                         "global_step": global_step,
                     },
                 )
