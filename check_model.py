@@ -1,0 +1,69 @@
+import torch
+from torch import nn
+from torch.nn.parallel import DistributedDataParallel as DDP
+from functools import partial
+from models.vit_mae import MaskedAutoencoderViT
+from models.gr1_new_2_old_name import GR1Agent
+import numpy as np
+import random
+
+
+def random_seed(seed=42, rank=0):
+    torch.manual_seed(seed + rank)
+    np.random.seed(seed + rank)
+    random.seed(seed + rank)
+
+class Model(nn.Module):
+    def __init__(
+        self, 
+        module,
+    ):
+        super().__init__()
+        self.module = module
+
+random_seed()
+
+model = GR1Agent(
+    clip_device='cpu',
+    sequence_length=10,
+    num_resampler_query=9,
+    num_obs_token_per_image=9,
+    calvin_input_image_size=224,
+    patch_size=16,
+)
+model.vision_encoder.bfloat16()
+model._init_model_type()
+model = Model(model)
+checkpoint = torch.load('/mnt/petrelfs/yangsizhe/projects/pretrain_for_manipulation/Robogr1/exp/bs=512_lr1e-3_partial_data_bf16ve/0.pth', map_location="cpu")
+model.load_state_dict(checkpoint["model_state_dict"], True)
+# random_seed()
+# model1 = Model(GR1Agent(
+#     clip_device='cpu',
+#     sequence_length=10,
+#     num_resampler_query=9,
+#     num_obs_token_per_image=9,
+#     calvin_input_image_size=224,
+#     patch_size=16,
+# ))
+# model1.module.vision_encoder.bfloat16()
+# # checkpoint1 = torch.load('b.pth', map_location="cpu")
+# # model1.load_state_dict(checkpoint1["model_state_dict"], False)
+
+# params1 = model.state_dict()  # checkpoint["model_state_dict"] #
+# params2 = model1.state_dict()  # checkpoint1["model_state_dict"] #
+# for name1, param1 in params1.items():
+#     if name1 in params2:
+#         param2 = params2[name1]
+#         if torch.equal(param1, param2):
+#             print(f"Parameters '{name1}' are equal.")
+#         else:
+#             print(f"Parameters '{name1}' are NOT equal.")
+#     else:
+#         print(f"Parameter '{name1}' does not exist in the second model.")
+
+
+# checkpoint["model_state_dict"]['module.transformer_backbone_position_embedding']
+# checkpoint1["model_state_dict"]['module.clip_model.visual.transformer.resblocks.2.attn.out_proj.weight']
+
+
+# 'module.action_pred_token', 'module.obs_tokens', 'module.transformer_backbone_position_embedding', 'module.pre_mask_token', 'module.image_decoder_position_embedding', 'module.mask_token', 'module.text_projector.weight', 'module.text_projector.bias', 'module.arm_state_encoder.weight', 'module.arm_state_encoder.bias', 'module.gripper_state_encoder.weight', 'module.gripper_state_encoder.bias', 'module.state_projector.weight', 'module.state_projector.bias', 'module.perceiver_resampler.latents', 'module.perceiver_resampler.layers.0.0.norm_media.weight', 'module.perceiver_resampler.layers.0.0.norm_media.bias', 'module.perceiver_resampler.layers.0.0.norm_latents.weight', 'module.perceiver_resampler.layers.0.0.norm_latents.bias', 'module.perceiver_resampler.layers.0.0.to_q.weight', 'module.perceiver_resampler.layers.0.0.to_kv.weight', 'module.perceiver_resampler.layers.0.0.to_out.weight', 'module.perceiver_resampler.layers.0.1.0.weight', 'module.perceiver_resampler.layers.0.1.0.bias', 'module.perceiver_resampler.layers.0.1.1.weight', 'module.perceiver_resampler.layers.0.1.3.weight', 'module.perceiver_resampler.layers.1.0.norm_media.weight', 'module.perceiver_resampler.layers.1.0.norm_media.bias', 'module.perceiver_resampler.layers.1.0.norm_latents.weight', 'module.perceiver_resampler.layers.1.0.norm_latents.bias', 'module.perceiver_resampler.layers.1.0.to_q.weight', 'module.perceiver_resampler.layers.1.0.to_kv.weight', 'module.perceiver_resampler.layers.1.0.to_out.weight', 'module.perceiver_resampler.layers.1.1.0.weight', 'module.perceiver_resampler.layers.1.1.0.bias', 'module.perceiver_resampler.layers.1.1.1.weight', 'module.perceiver_resampler.layers.1.1.3.weight', 'module.perceiver_resampler.layers.2.0.norm_media.weight', 'module.perceiver_resampler.layers.2.0.norm_media.bias', 'module.perceiver_resampler.layers.2.0.norm_latents.weight', 'module.perceiver_resampler.layers.2.0.norm_latents.bias', 'module.perceiver_resampler.layers.2.0.to_q.weight', 'module.perceiver_resampler.layers.2.0.to_kv.weight', 'module.perceiver_resampler.layers.2.0.to_out.weight', 'module.perceiver_resampler.layers.2.1.0.weight', 'module.perceiver_resampler.layers.2.1.0.bias', 'module.perceiver_resampler.layers.2.1.1.weight', 'module.perceiver_resampler.layers.2.1.3.weight', 'module.perceiver_resampler.norm.weight', 'module.perceiver_resampler.norm.bias', 'module.image_primary_projector.weight', 'module.image_primary_projector.bias', 'module.cls_token_primary_projector.weight', 'module.cls_token_primary_projector.bias', 'module.image_wrist_projector.weight', 'module.image_wrist_projector.bias', 'module.cls_token_wrist_projector.weight', 'module.cls_token_wrist_projector.bias', 'module.embedding_layer_norm.weight', 'module.embedding_layer_norm.bias', 'module.transformer_backbone.h.0.ln_1.weight', 'module.transformer_backbone.h.0.ln_1.bias', 'module.transformer_backbone.h.0.attn.c_attn.weight', 'module.transformer_backbone.h.0.attn.c_attn.bias', 'module.transformer_backbone.h.0.attn.c_proj.weight', 'module.transformer_backbone.h.0.attn.c_proj.bias', 'module.transformer_backbone.h.0.ln_2.weight', 'module.transformer_backbone.h.0.ln_2.bias', 'module.transformer_backbone.h.0.mlp.c_fc.weight', 'module.transformer_backbone.h.0.mlp.c_fc.bias', 'module.transformer_backbone.h.0.mlp.c_proj.weight', 'module.transformer_backbone.h.0.mlp.c_proj.bias', 'module.transformer_backbone.h.1.ln_1.weight', 'module.transformer_backbone.h.1.ln_1.bias', 'module.transformer_backbone.h.1.attn.c_attn.weight', 'module.transformer_backbone.h.1.attn.c_attn.bias', 'module.transformer_backbone.h.1.attn.c_proj.weight', 'module.transformer_backbone.h.1.attn.c_proj.bias', 'module.transformer_backbone.h.1.ln_2.weight', 'module.transformer_backbone.h.1.ln_2.bias', 'module.transformer_backbone.h.1.mlp.c_fc.weight', 'module.transformer_backbone.h.1.mlp.c_fc.bias', 'module.transformer_backbone.h.1.mlp.c_proj.weight', 'module.transformer_backbone.h.1.mlp.c_proj.bias', 'module.transformer_backbone.h.2.ln_1.weight', 'module.transformer_backbone.h.2.ln_1.bias', 'module.transformer_backbone.h.2.attn.c_attn.weight', 'module.transformer_backbone.h.2.attn.c_attn.bias', 'module.transformer_backbone.h.2.attn.c_proj.weight', 'module.transformer_backbone.h.2.attn.c_proj.bias', 'module.transformer_backbone.h.2.ln_2.weight', 'module.transformer_backbone.h.2.ln_2.bias', 'module.transformer_backbone.h.2.mlp.c_fc.weight', 'module.transformer_backbone.h.2.mlp.c_fc.bias', 'module.transformer_backbone.h.2.mlp.c_proj.weight', 'module.transformer_backbone.h.2.mlp.c_proj.bias', 'module.transformer_backbone.h.3.ln_1.weight', 'module.transformer_backbone.h.3.ln_1.bias', 'module.transformer_backbone.h.3.attn.c_attn.weight', 'module.transformer_backbone.h.3.attn.c_attn.bias', 'module.transformer_backbone.h.3.attn.c_proj.weight', 'module.transformer_backbone.h.3.attn.c_proj.bias', 'module.transformer_backbone.h.3.ln_2.weight', 'module.transformer_backbone.h.3.ln_2.bias', 'module.transformer_backbone.h.3.mlp.c_fc.weight', 'module.transformer_backbone.h.3.mlp.c_fc.bias', 'module.transformer_backbone.h.3.mlp.c_proj.weight', 'module.transformer_backbone.h.3.mlp.c_proj.bias', 'module.transformer_backbone.h.4.ln_1.weight', 'module.transformer_backbone.h.4.ln_1.bias', 'module.transformer_backbone.h.4.attn.c_attn.weight', 'module.transformer_backbone.h.4.attn.c_attn.bias', 'module.transformer_backbone.h.4.attn.c_proj.weight', 'module.transformer_backbone.h.4.attn.c_proj.bias', 'module.transformer_backbone.h.4.ln_2.weight', 'module.transformer_backbone.h.4.ln_2.bias', 'module.transformer_backbone.h.4.mlp.c_fc.weight', 'module.transformer_backbone.h.4.mlp.c_fc.bias', 'module.transformer_backbone.h.4.mlp.c_proj.weight', 'module.transformer_backbone.h.4.mlp.c_proj.bias', 'module.transformer_backbone.h.5.ln_1.weight', 'module.transformer_backbone.h.5.ln_1.bias', 'module.transformer_backbone.h.5.attn.c_attn.weight', 'module.transformer_backbone.h.5.attn.c_attn.bias', 'module.transformer_backbone.h.5.attn.c_proj.weight', 'module.transformer_backbone.h.5.attn.c_proj.bias', 'module.transformer_backbone.h.5.ln_2.weight', 'module.transformer_backbone.h.5.ln_2.bias', 'module.transformer_backbone.h.5.mlp.c_fc.weight', 'module.transformer_backbone.h.5.mlp.c_fc.bias', 'module.transformer_backbone.h.5.mlp.c_proj.weight', 'module.transformer_backbone.h.5.mlp.c_proj.bias', 'module.transformer_backbone.h.6.ln_1.weight', 'module.transformer_backbone.h.6.ln_1.bias', 'module.transformer_backbone.h.6.attn.c_attn.weight', 'module.transformer_backbone.h.6.attn.c_attn.bias', 'module.transformer_backbone.h.6.attn.c_proj.weight', 'module.transformer_backbone.h.6.attn.c_proj.bias', 'module.transformer_backbone.h.6.ln_2.weight', 'module.transformer_backbone.h.6.ln_2.bias', 'module.transformer_backbone.h.6.mlp.c_fc.weight', 'module.transformer_backbone.h.6.mlp.c_fc.bias', 'module.transformer_backbone.h.6.mlp.c_proj.weight', 'module.transformer_backbone.h.6.mlp.c_proj.bias', 'module.transformer_backbone.h.7.ln_1.weight', 'module.transformer_backbone.h.7.ln_1.bias', 'module.transformer_backbone.h.7.attn.c_attn.weight', 'module.transformer_backbone.h.7.attn.c_attn.bias', 'module.transformer_backbone.h.7.attn.c_proj.weight', 'module.transformer_backbone.h.7.attn.c_proj.bias', 'module.transformer_backbone.h.7.ln_2.weight', 'module.transformer_backbone.h.7.ln_2.bias', 'module.transformer_backbone.h.7.mlp.c_fc.weight', 'module.transformer_backbone.h.7.mlp.c_fc.bias', 'module.transformer_backbone.h.7.mlp.c_proj.weight', 'module.transformer_backbone.h.7.mlp.c_proj.bias', 'module.transformer_backbone.h.8.ln_1.weight', 'module.transformer_backbone.h.8.ln_1.bias', 'module.transformer_backbone.h.8.attn.c_attn.weight', 'module.transformer_backbone.h.8.attn.c_attn.bias', 'module.transformer_backbone.h.8.attn.c_proj.weight', 'module.transformer_backbone.h.8.attn.c_proj.bias', 'module.transformer_backbone.h.8.ln_2.weight', 'module.transformer_backbone.h.8.ln_2.bias', 'module.transformer_backbone.h.8.mlp.c_fc.weight', 'module.transformer_backbone.h.8.mlp.c_fc.bias', 'module.transformer_backbone.h.8.mlp.c_proj.weight', 'module.transformer_backbone.h.8.mlp.c_proj.bias', 'module.transformer_backbone.h.9.ln_1.weight', 'module.transformer_backbone.h.9.ln_1.bias', 'module.transformer_backbone.h.9.attn.c_attn.weight', 'module.transformer_backbone.h.9.attn.c_attn.bias', 'module.transformer_backbone.h.9.attn.c_proj.weight', 'module.transformer_backbone.h.9.attn.c_proj.bias', 'module.transformer_backbone.h.9.ln_2.weight', 'module.transformer_backbone.h.9.ln_2.bias', 'module.transformer_backbone.h.9.mlp.c_fc.weight', 'module.transformer_backbone.h.9.mlp.c_fc.bias', 'module.transformer_backbone.h.9.mlp.c_proj.weight', 'module.transformer_backbone.h.9.mlp.c_proj.bias', 'module.transformer_backbone.h.10.ln_1.weight', 'module.transformer_backbone.h.10.ln_1.bias', 'module.transformer_backbone.h.10.attn.c_attn.weight', 'module.transformer_backbone.h.10.attn.c_attn.bias', 'module.transformer_backbone.h.10.attn.c_proj.weight', 'module.transformer_backbone.h.10.attn.c_proj.bias', 'module.transformer_backbone.h.10.ln_2.weight', 'module.transformer_backbone.h.10.ln_2.bias', 'module.transformer_backbone.h.10.mlp.c_fc.weight', 'module.transformer_backbone.h.10.mlp.c_fc.bias', 'module.transformer_backbone.h.10.mlp.c_proj.weight', 'module.transformer_backbone.h.10.mlp.c_proj.bias', 'module.transformer_backbone.h.11.ln_1.weight', 'module.transformer_backbone.h.11.ln_1.bias', 'module.transformer_backbone.h.11.attn.c_attn.weight', 'module.transformer_backbone.h.11.attn.c_attn.bias', 'module.transformer_backbone.h.11.attn.c_proj.weight', 'module.transformer_backbone.h.11.attn.c_proj.bias', 'module.transformer_backbone.h.11.ln_2.weight', 'module.transformer_backbone.h.11.ln_2.bias', 'module.transformer_backbone.h.11.mlp.c_fc.weight', 'module.transformer_backbone.h.11.mlp.c_fc.bias', 'module.transformer_backbone.h.11.mlp.c_proj.weight', 'module.transformer_backbone.h.11.mlp.c_proj.bias', 'module.transformer_backbone.ln_f.weight', 'module.transformer_backbone.ln_f.bias', 'module.action_decoder.0.weight', 'module.action_decoder.0.bias', 'module.action_decoder.2.weight', 'module.action_decoder.2.bias', 'module.arm_action_decoder.0.weight', 'module.arm_action_decoder.0.bias', 'module.gripper_action_decoder.0.weight', 'module.gripper_action_decoder.0.bias', 'module.image_decoder_obs_pred_projector.weight', 'module.image_decoder_obs_pred_projector.bias', 'module.image_decoder.0.norm1.weight', 'module.image_decoder.0.norm1.bias', 'module.image_decoder.0.attn.qkv.weight', 'module.image_decoder.0.attn.qkv.bias', 'module.image_decoder.0.attn.proj.weight', 'module.image_decoder.0.attn.proj.bias', 'module.image_decoder.0.norm2.weight', 'module.image_decoder.0.norm2.bias', 'module.image_decoder.0.mlp.fc1.weight', 'module.image_decoder.0.mlp.fc1.bias', 'module.image_decoder.0.mlp.fc2.weight', 'module.image_decoder.0.mlp.fc2.bias', 'module.image_decoder.1.norm1.weight', 'module.image_decoder.1.norm1.bias', 'module.image_decoder.1.attn.qkv.weight', 'module.image_decoder.1.attn.qkv.bias', 'module.image_decoder.1.attn.proj.weight', 'module.image_decoder.1.attn.proj.bias', 'module.image_decoder.1.norm2.weight', 'module.image_decoder.1.norm2.bias', 'module.image_decoder.1.mlp.fc1.weight', 'module.image_decoder.1.mlp.fc1.bias', 'module.image_decoder.1.mlp.fc2.weight', 'module.image_decoder.1.mlp.fc2.bias', 'module.image_decoder_norm.weight', 'module.image_decoder_norm.bias', 'module.image_decoder_pred.weight', 'module.image_decoder_pred.bias']
