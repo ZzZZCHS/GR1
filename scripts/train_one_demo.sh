@@ -5,13 +5,13 @@ data_dir='/ailab/user/huanghaifeng/work/robocasa_exps_haifeng/robocasa/datasets/
 node=1
 node_num=8
 
-exp_name=robomimic_train_notanh
-batch_size=8
+exp_name=robomimic_train_1_door
+batch_size=4
 lr=1e-3
-weight_decay=1e-3
-epochs=10
+weight_decay=0.01
+epochs=500
 
-run_name="$(date +"%Y%m%d_%H%M%S")"_"$exp_name"_bs"$batch_size"_lr"$lr"_ep"$epochs"_decay"$weight_decay"
+run_name="$(date +"%Y%m%d_%H%M%S")"_"$exp_name"_bs"$batch_size"_lr"$lr"_steps"$epochs"_decay"$weight_decay"
 
 which python
 which torchrun
@@ -39,8 +39,9 @@ torchrun --nnodes=${node} --nproc_per_node=${node_num} --master_port=10079 train
     --num_resampler_query 6 \
     --run_name "$run_name" \
     --save_checkpoint \
-    --config "configs/noadd.json" \
-    --report_to_wandb
+    --config "configs/noadd_opendoor.json" \
+    --delete_previous_checkpoint
+    # --report_to_wandb 
     # --data_dir "$data_dir"
     # --calvin_dataset "$calvin_dataset_path" \
 

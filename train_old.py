@@ -6,13 +6,11 @@ import numpy as np
 import torch
 import wandb
 import clip
-import json
-import functools
 from torch.nn.parallel import DistributedDataParallel as DDP
+from utils.data_utils import get_calvin_dataset, get_calvin_val_dataset
 # from utils.robomimic_data_utils import SequenceDataset, MetaDataset
 from utils.distributed_utils import init_distributed_device, world_info_from_env
 from utils.train_utils import get_checkpoint, get_checkpoint_all_param, train_one_epoch_calvin, get_ckpt_name  #, validate_one_epoch_calvin
-from utils.data_utils import preprocess_image, get_robomimic_dataset
 from torch.distributed.elastic.multiprocessing.errors import record
 from transformers import (
     get_constant_schedule_with_warmup,
@@ -22,27 +20,14 @@ from transformers import (
 from utils.arguments_utils import get_args
 from models.gr1 import GR1Agent
 
-from robomimic.config import config_factory
-
 def random_seed(seed=42, rank=0):
     torch.manual_seed(seed + rank)
     np.random.seed(seed + rank)
     random.seed(seed + rank)
 
-
 @record
 def main():
     args = get_args()
-    
-    if args.config is not None:
-        ext_cfg = json.load(open(args.config, 'r'))
-        config = config_factory(ext_cfg["algo_name"])
-        # update config with external json - this will throw errors if
-        # the external config has keys not present in the base algo config
-        with config.unlocked():
-            config.update(ext_cfg)
-    else:
-        config = None
 
     if args.tcp_rel:
         args.clip_state = True
@@ -78,10 +63,6 @@ def main():
         calvin_dataset = get_calvin_dataset(args, model.image_processor, clip, epoch=0)
     elif args.data_type == "calvin_except_lang":
         calvin_dataset = get_calvin_dataset(args, model.image_processor, clip, epoch=0, key='all')  # except_lang
-    elif args.data_type == "robomimic":
-        calvin_dataset = get_robomimic_dataset(args, model.image_processor, clip, epoch=0, config=config)
-    else:
-        raise NotImplementedError
     # if args.validation:
     #     calvin_val_dataset = get_calvin_val_dataset(args, image_processor, clip, epoch=0)
 
@@ -186,10 +167,6 @@ def main():
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         lr_scheduler.load_state_dict(checkpoint["lr_scheduler_state_dict"])
         resume_from_epoch = checkpoint["epoch"] + 1
-    
-    preprocess_image_fn = functools.partial(
-        preprocess_image, image_processor=model.image_processor
-    )
 
     ddp_model.train()
     if args.real_data:
@@ -207,7 +184,6 @@ def main():
             calvin_loader=calvin_loader,
             device_id=device_id,
             wandb=wandb,
-            image_processor=preprocess_image_fn
         )
 
         if args.rank == 0 and args.save_checkpoint:
@@ -220,15 +196,15 @@ def main():
                 "optimizer_state_dict": optimizer.state_dict(),
                 "lr_scheduler_state_dict": lr_scheduler.state_dict(),
             }
-            if args.delete_previous_checkpoint:
-                if epoch > 0:
-                    os.remove(ckpt_path)
+
             ckpt_name = get_ckpt_name(args, epoch)
             ckpt_path = os.path.join(f"{args.checkpoint_path}/exp", args.run_name, ckpt_name)
 
             print(f"Saving checkpoint to {ckpt_path}")
             torch.save(checkpoint_dict, ckpt_path)
-            
+            if args.delete_previous_checkpoint:
+                if epoch > 0:
+                    os.remove(ckpt_path)
     
     if args.rank == 0 and args.report_to_wandb:
         wandb.finish()

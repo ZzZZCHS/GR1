@@ -74,6 +74,8 @@ from torch.utils.data import Dataset
 from typing import Any, Dict, List, Tuple, Callable, Union
 import roboticstoolbox as rtb
 
+import robomimic.utils.train_utils as TrainUtils
+
 robot = rtb.models.Panda()
 # print(robot)
 # print(robot.link_dict.keys())
@@ -1282,6 +1284,56 @@ def get_calvin_dataset(args, image_processor, tokenizer, epoch=0, floor=False, k
     dataloader.num_samples = num_samples
 
     return DataInfo(dataloader=dataloader, shared_epoch=shared_epoch, sampler=sampler, dataset=calvin_dataset)
+
+
+def get_robomimic_dataset(args, image_processor, tokenizer, epoch=0, floor=False, key='lang', config=None):
+    shared_epoch = SharedEpoch(epoch=epoch)
+    # preprocess_image_fn = functools.partial(
+    #     preprocess_image, image_processor=image_processor
+    # )
+    preprocess_text_fn = functools.partial(preprocess_text_calvin, tokenizer=tokenizer)
+    
+    all_obs_keys = ['robot0_agentview_left_image', 'robot0_agentview_right_image', 'robot0_base_pos', 'robot0_base_quat', 'robot0_base_to_eef_pos', 'robot0_base_to_eef_quat', 'robot0_eye_in_hand_image', 'robot0_gripper_qpos']
+    trainset, _ = TrainUtils.load_data_for_training(
+        config, obs_keys=all_obs_keys, lang_encoder=preprocess_text_fn)
+    
+    round_fn = math.floor if floor else math.ceil
+    num_samples = len(trainset)
+    global_batch_size = args.batch_size_calvin * args.world_size
+    num_batches = round_fn(num_samples / global_batch_size)
+    
+    num_workers = max(1, args.workers)
+    
+    num_worker_batches = round_fn(num_batches / num_workers)
+    num_batches = num_worker_batches * num_workers
+    num_samples = num_batches * global_batch_size
+    
+    sampler = DistributedSampler(
+        trainset,
+        num_replicas=args.world_size,
+        rank=args.rank,
+        shuffle=True,
+        seed=args.seed,
+        drop_last=True
+    )
+    
+    dataloader = DataLoader(
+        trainset,
+        batch_size=args.batch_size_calvin,
+        pin_memory=False,
+        num_workers=num_workers,
+        prefetch_factor=3,
+        sampler=sampler,
+        persistent_workers=True,
+        # collate_fn=trainset.collator,
+        drop_last=True
+    )
+    
+    dataloader.num_batches = num_batches
+    dataloader.num_samples = num_samples
+    
+    return DataInfo(dataloader=dataloader, shared_epoch=shared_epoch, sampler=sampler, dataset=trainset)
+
 
 def get_calvin_val_dataset(args, image_processor, tokenizer, epoch=0, floor=False):
     dataset_path = args.calvin_dataset

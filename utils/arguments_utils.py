@@ -54,6 +54,9 @@ def get_args(is_eval=False):
     parser.add_argument(
         "--logging_steps", type=int, default=100, help="log loss every n steps"
     )
+    parser.add_argument(
+        "--config", type=str, help="robomimic dataset config filepath"
+    )
     # Sum of gradient optimization batch size
     parser.add_argument("--batch_size_calvin", type=int, default=1)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
@@ -81,6 +84,11 @@ def get_args(is_eval=False):
         type=str,
         default='/mnt/petrelfs/share_data/robomani/calvin_data/task_ABCD_D',
         help="path to calvin_dataset",
+    )
+    parser.add_argument(
+        "--data_dir",
+        type=str,
+        help="dir to (robomimic) data"
     )
     parser.add_argument("--warmup_steps", default=5000, type=int)
     parser.add_argument("--local-rank", default=0, type=int)
@@ -118,17 +126,24 @@ def get_args(is_eval=False):
     parser.add_argument(
         "--wandb_project",
         type=str,
-        default="Robogr1"
+        default="GR1_robocasa_exps"
     )
     parser.add_argument(
         "--wandb_entity",
         type=str,
+        default="huanghaifeng"
     )
     parser.add_argument(
         "--save_checkpoints_to_wandb",
         default=False,
         action="store_true",
         help="save checkpoints to wandb",
+    )
+    
+    parser.add_argument(
+        "--val_domain",
+        type=str,
+        default="train"
     )
 
     # history window size when evaluating, for FC head equals to hist_window, for LSTM head means refresh frequency
@@ -218,7 +233,7 @@ def get_args(is_eval=False):
     parser.add_argument("--bf16_module", type=str, default="")
 
     # data_type
-    parser.add_argument("--data_type", type=str, default="calvin")
+    parser.add_argument("--data_type", type=str, default="robomimic")
 
     # model structure 
     parser.add_argument("--window_size", type=int, default=13)

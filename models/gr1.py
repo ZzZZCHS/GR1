@@ -105,9 +105,10 @@ class GR1Agent(nn.Module):
         # state encoder
         ARM_STATE_FEATURE_DIM =384
         GRIPPER_STATE_FEATURE_DIM = 384
-        self.arm_state_encoder = nn.Linear(6, ARM_STATE_FEATURE_DIM)
-        self.gripper_state_encoder = nn.Linear(2, GRIPPER_STATE_FEATURE_DIM)
-        self.state_projector = nn.Linear(ARM_STATE_FEATURE_DIM + GRIPPER_STATE_FEATURE_DIM, self.HIDDEN_DIM)
+        # self.arm_state_encoder = nn.Linear(6, ARM_STATE_FEATURE_DIM)
+        # self.gripper_state_encoder = nn.Linear(2, GRIPPER_STATE_FEATURE_DIM)
+        # self.state_projector = nn.Linear(ARM_STATE_FEATURE_DIM + GRIPPER_STATE_FEATURE_DIM, self.HIDDEN_DIM)
+        self.state_projector = nn.Linear(9, self.HIDDEN_DIM)
 
         # vision encoder (frozen)
         self.vision_encoder = MaskedAutoencoderViT(
@@ -121,21 +122,23 @@ class GR1Agent(nn.Module):
         self.NUM_RESAMPLER_QUERY = num_resampler_query
         # self.image_projector_for_resampler = nn.Linear(768, self.RESAMPLER_HIDDEN_DIM)
         self.perceiver_resampler = PerceiverResampler(dim=self.RESAMPLER_HIDDEN_DIM, num_latents=self.NUM_RESAMPLER_QUERY, depth=3)
-        self.image_primary_projector = nn.Linear(self.RESAMPLER_HIDDEN_DIM, self.HIDDEN_DIM)
-        self.cls_token_primary_projector = nn.Linear(768, self.HIDDEN_DIM)
+        self.image_left_projector = nn.Linear(self.RESAMPLER_HIDDEN_DIM, self.HIDDEN_DIM)
+        self.cls_token_left_projector = nn.Linear(self.RESAMPLER_HIDDEN_DIM, self.HIDDEN_DIM)
+        self.image_right_projector = nn.Linear(self.RESAMPLER_HIDDEN_DIM, self.HIDDEN_DIM)
+        self.cls_token_right_projector = nn.Linear(self.RESAMPLER_HIDDEN_DIM, self.HIDDEN_DIM)
         self.image_wrist_projector = nn.Linear(self.RESAMPLER_HIDDEN_DIM, self.HIDDEN_DIM)
-        self.cls_token_wrist_projector = nn.Linear(768, self.HIDDEN_DIM)
+        self.cls_token_wrist_projector = nn.Linear(self.RESAMPLER_HIDDEN_DIM, self.HIDDEN_DIM)
 
         # action_pred_token
         self.action_pred_token = nn.Parameter(torch.zeros(1, 1, 1, self.HIDDEN_DIM))
         # obs_token
         self.NUM_OBS_TOKEN_PER_IMAGE = num_obs_token_per_image
-        self.NUM_OBS_TOKEN = self.NUM_OBS_TOKEN_PER_IMAGE * 2
+        self.NUM_OBS_TOKEN = self.NUM_OBS_TOKEN_PER_IMAGE * 3
         self.obs_tokens = nn.Parameter(torch.zeros(1, 1, self.NUM_OBS_TOKEN, self.HIDDEN_DIM))
 
         # causal transformer
         self.embedding_layer_norm = nn.LayerNorm(self.HIDDEN_DIM)
-        num_non_learnable_token_per_timestep = 1+1+self.NUM_RESAMPLER_QUERY*2+1*2
+        num_non_learnable_token_per_timestep = 1+1+self.NUM_RESAMPLER_QUERY*3+1*3
         self.attention_mask = nn.Parameter(generate_attention_mask(K=self.sequence_length, num_A=num_non_learnable_token_per_timestep, num_B=self.NUM_OBS_TOKEN+1), requires_grad=False)
         self.transformer_backbone_position_embedding = nn.Parameter(torch.zeros(1, self.sequence_length, 1, self.HIDDEN_DIM), requires_grad=True)
         config = GPT2Config()
@@ -143,6 +146,11 @@ class GR1Agent(nn.Module):
         config.hidden_size = self.HIDDEN_DIM
         config.n_head = transformer_heads
         config.vocab_size = 1
+        # !!!
+        # config.resid_pdrop = 0
+        # config.embd_pdrop = 0
+        # config.attn_pdrop = 0
+        # config.summary_first_dropout = 0
         self.transformer_backbone = GPT2Model(config)
 
         # action decoder
@@ -154,7 +162,7 @@ class GR1Agent(nn.Module):
         )
         self.arm_action_decoder = nn.Sequential(
             nn.Linear(192, 6),
-            torch.nn.Tanh(),
+            # torch.nn.Tanh(),  # !!!
         )
         self.gripper_action_decoder = nn.Sequential(
             nn.Linear(192, 1),
@@ -219,10 +227,10 @@ class GR1Agent(nn.Module):
         self.mask_token = self.mask_token.type(self.image_decoder_type)
         self.image_decoder_pred_type = next(self.image_decoder_pred.parameters()).type()
 
-    def forward(self, image_primary, image_wrist, state, text_token, epoch=0):
-        device = image_primary.device
+    def forward(self, image_left, image_right, image_wrist, state, text_token, epoch=0):
+        device = image_left.device
         B, S, _ = state.shape
-        S_AND_FUTURE = image_primary.shape[1]
+        S_AND_FUTURE = image_left.shape[1]
         image_pred = None
         # encoder text
         with torch.no_grad():
@@ -233,45 +241,55 @@ class GR1Agent(nn.Module):
 
         # encode state
         state = state.flatten(0, 1)
-        arm_state_feature = self.arm_state_encoder(state[:, :6])
-        gripper_state_one_hot = torch.nn.functional.one_hot(torch.where(state[:, 6:].flatten() < 1, torch.tensor(0).to(device), torch.tensor(1).to(device)), num_classes=2)
-        gripper_state_feature = self.gripper_state_encoder(gripper_state_one_hot.type_as(state))
-        state_embedding = self.state_projector(torch.cat((arm_state_feature, gripper_state_feature), dim=1))
+        # arm_state_feature = self.arm_state_encoder(state[:, :6])
+        # gripper_state_one_hot = torch.nn.functional.one_hot(torch.where(state[:, 6:].flatten() < 1, torch.tensor(0).to(device), torch.tensor(1).to(device)), num_classes=2)
+        # gripper_state_feature = self.gripper_state_encoder(gripper_state_one_hot.type_as(state))
+        # state_embedding = self.state_projector(torch.cat((arm_state_feature, gripper_state_feature), dim=1))
+        state_embedding = self.state_projector(state)
         state_embedding = state_embedding.view(B, S, -1, self.HIDDEN_DIM) # (bs, sequence_length, 1, hidden_dim)
 
         # encode images
-        if image_primary.type() != self.vision_encoder_type:
-            image_primary = image_primary.type(self.vision_encoder_type)
+        if image_left.type() != self.vision_encoder_type:
+            image_left = image_left.type(self.vision_encoder_type)
+            image_right = image_right.type(self.vision_encoder_type)
             image_wrist = image_wrist.type(self.vision_encoder_type)
         
         with torch.no_grad():
-            image_primary_feature, _, _ = self.vision_encoder.forward_encoder(image_primary.flatten(0, 1), mask_ratio=0.0)
+            image_left_feature, _, _ = self.vision_encoder.forward_encoder(image_left.flatten(0, 1), mask_ratio=0.0)
+            image_right_feature, _, _ = self.vision_encoder.forward_encoder(image_right.flatten(0, 1), mask_ratio=0.0)
             image_wrist_feature, _, _ = self.vision_encoder.forward_encoder(image_wrist.flatten(0, 1), mask_ratio=0.0)
-        if image_primary_feature.type() != self.perceiver_resampler_type:
-            image_primary_feature = image_primary_feature.type(self.perceiver_resampler_type)
+        if image_left_feature.type() != self.perceiver_resampler_type:
+            image_left_feature = image_left_feature.type(self.perceiver_resampler_type)
+            image_right_feature = image_right_feature.type(self.perceiver_resampler_type)
             image_wrist_feature = image_wrist_feature.type(self.perceiver_resampler_type)
-        image_primary_feature = image_primary_feature.view(B, S_AND_FUTURE, image_primary_feature.shape[-2], image_primary_feature.shape[-1])
+        image_left_feature = image_left_feature.view(B, S_AND_FUTURE, image_left_feature.shape[-2], image_left_feature.shape[-1])
+        image_right_feature = image_right_feature.view(B, S_AND_FUTURE, image_right_feature.shape[-2], image_right_feature.shape[-1])
         image_wrist_feature = image_wrist_feature.view(B, S_AND_FUTURE, image_wrist_feature.shape[-2], image_wrist_feature.shape[-1])
 
         cls_token_idx = 0
         idx = cls_token_idx + 1
 
-        image_primary_cls_token = image_primary_feature[:, :, :idx, :]
+        image_left_cls_token = image_left_feature[:, :, :idx, :]
+        image_right_cls_token = image_right_feature[:, :, :idx, :]
         image_wrist_cls_token = image_wrist_feature[:, :, :idx, :]
 
-        image_primary_feature = image_primary_feature[:, :, idx:, :]
+        image_left_feature = image_left_feature[:, :, idx:, :]
+        image_right_feature = image_right_feature[:, :, idx:, :]
         image_wrist_feature = image_wrist_feature[:, :, idx:, :]
 
         # perceiver resampler
-        image_primary_feature = self.perceiver_resampler(image_primary_feature.reshape(B*S, 196, self.RESAMPLER_HIDDEN_DIM).unsqueeze(1).unsqueeze(1))  # mae vit outputs 196 tokens
+        image_left_feature = self.perceiver_resampler(image_left_feature.reshape(B*S, 196, self.RESAMPLER_HIDDEN_DIM).unsqueeze(1).unsqueeze(1))  # mae vit outputs 196 tokens
+        image_right_feature = self.perceiver_resampler(image_right_feature.reshape(B*S, 196, self.RESAMPLER_HIDDEN_DIM).unsqueeze(1).unsqueeze(1)) 
         image_wrist_feature = self.perceiver_resampler(image_wrist_feature.reshape(B*S, 196, self.RESAMPLER_HIDDEN_DIM).unsqueeze(1).unsqueeze(1))
-        image_primary_embedding = self.image_primary_projector(image_primary_feature.flatten(0, 2)).view(B, S, -1, self.HIDDEN_DIM)
+        image_left_embedding = self.image_left_projector(image_left_feature.flatten(0, 2)).view(B, S, -1, self.HIDDEN_DIM)
+        image_right_embedding = self.image_right_projector(image_right_feature.flatten(0, 2)).view(B, S, -1, self.HIDDEN_DIM)
         image_wrist_embedding = self.image_wrist_projector(image_wrist_feature.flatten(0, 2)).view(B, S, -1, self.HIDDEN_DIM)          
-        image_embedding = torch.cat((image_primary_embedding, image_wrist_embedding), dim=2)
+        image_embedding = torch.cat((image_left_embedding, image_right_embedding, image_wrist_embedding), dim=2)
 
-        image_cls_token_primary_embedding = self.cls_token_primary_projector(image_primary_cls_token.flatten(0, 2)).view(B, S, -1, self.HIDDEN_DIM)
+        image_cls_token_left_embedding = self.cls_token_left_projector(image_left_cls_token.flatten(0, 2)).view(B, S, -1, self.HIDDEN_DIM)
+        image_cls_token_right_embedding = self.cls_token_right_projector(image_right_cls_token.flatten(0, 2)).view(B, S, -1, self.HIDDEN_DIM)
         image_cls_token_wrist_embedding = self.cls_token_wrist_projector(image_wrist_cls_token.flatten(0, 2)).view(B, S, -1, self.HIDDEN_DIM)
-        image_cls_token_embedding = torch.cat((image_cls_token_primary_embedding, image_cls_token_wrist_embedding), dim=2)
+        image_cls_token_embedding = torch.cat((image_cls_token_left_embedding, image_cls_token_right_embedding, image_cls_token_wrist_embedding), dim=2)
 
         # aggregate embeddings and add timestep position encoding
 
@@ -286,7 +304,6 @@ class GR1Agent(nn.Module):
 
         # causal transformer forward
         transformer_input = self.embedding_layer_norm(transformer_input)
-
         transformer_output = self.transformer_backbone(inputs_embeds=transformer_input, attention_mask=self.attention_mask)
         transformer_output = transformer_output.view(B, S, -1, self.HIDDEN_DIM)
         obs_pred_feature = transformer_output[:, :, pred_token_start_idx : pred_token_start_idx+self.NUM_OBS_TOKEN, :]

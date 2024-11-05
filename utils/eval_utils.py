@@ -413,6 +413,7 @@ def rollout(env, model, task_oracle, subtask, val_annotations, plans, debug, eva
     start_info = env.get_info()
 
     for step in range(EP_LEN):
+        breakpoint()
         action = model.step(obs, lang_annotation, step)
         if len(planned_actions) == 0:
             if action.shape == (7,):

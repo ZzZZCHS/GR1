@@ -3,11 +3,14 @@ from contextlib import suppress
 
 import torch
 from torch import nn
+import numpy as np
 import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel
 from tqdm import tqdm
-from utils.data_utils import world_to_tcp_frame, tcp_to_world_frame
+from utils.data_utils import world_to_tcp_frame, tcp_to_world_frame, RandomShiftsAug
 from einops import rearrange
+
+from PIL import Image
 
 
 def get_cast_dtype(precision: str):
@@ -63,6 +66,7 @@ def train_one_epoch_calvin(
     lr_scheduler,
     device_id,
     wandb,
+    image_processor=None
 ):
     num_batches_per_epoch_calvin = calvin_loader.num_batches
 
@@ -92,6 +96,8 @@ def train_one_epoch_calvin(
     )
     t.set_description(f"epoch {epoch+1}/{args.num_epochs}")
     mv_avg_loss = []
+    camera_names = ['robot0_agentview_left_image', 'robot0_agentview_right_image', 'robot0_eye_in_hand_image']
+    state_names = ['robot0_base_to_eef_pos', 'robot0_base_to_eef_quat', 'robot0_gripper_qpos']
 
     # torch.cuda.synchronize()
     # t0 = time.time()
@@ -101,60 +107,66 @@ def train_one_epoch_calvin(
         #     batch_calvin = batch_calvin_tmp
         data_time_m.update(time.time() - end)
         global_step = num_steps + epoch * num_batches_per_epoch
-
-        # images
-        images_primary = batch_calvin[0].to(device_id, dtype=cast_dtype, non_blocking=True)
-        images_wrist = batch_calvin[3].to(device_id, dtype=cast_dtype, non_blocking=True)
-
-        # text tokens
-        text_tokens = batch_calvin[1].to(device_id, non_blocking=True).unsqueeze(1).repeat(1, args.window_size, 1)
         
-        # states
-        states = batch_calvin[4].to(device_id, dtype=cast_dtype, non_blocking=True)
-        states = torch.cat([states[..., :6], states[..., [-1]]], dim=-1)
+        images_dict = {}
+        for cam_name in camera_names:
+            batch_seq_images = batch_calvin['obs'][cam_name][:, :args.window_size, ...]
+            image_list = batch_seq_images.flatten(0, 1).unbind(dim=0)
+            image_list = [Image.fromarray(image.numpy().astype(np.uint8)) for image in image_list]
+            processed_images = image_processor(image_list)
+            images_dict[cam_name] = processed_images.reshape(args.batch_size_calvin, args.window_size, 3, 224, 224)
+        images_left = images_dict['robot0_agentview_left_image'].to(device_id, dtype=cast_dtype, non_blocking=True)
+        images_right = images_dict['robot0_agentview_right_image'].to(device_id, dtype=cast_dtype, non_blocking=True)
+        images_wrist = images_dict['robot0_eye_in_hand_image'].to(device_id, dtype=cast_dtype, non_blocking=True)
 
-        # actions
-        actions = batch_calvin[2].to(device_id, dtype=cast_dtype, non_blocking=True)
+        text_tokens = batch_calvin['obs']['lang_emb'][:, :args.window_size, :].to(device_id, non_blocking=True)
+        
+        states = []
+        for state_name in state_names:
+            states.append(batch_calvin['obs'][state_name][:, :args.window_size, :].to(device_id, non_blocking=True))
+        states = torch.cat(states, dim=-1).to(torch.float32)
+        # states[:, :, :7] += torch.randn(states[:, :, :7].shape).to(states.device) * 0.001 # !!!
+        # states *= 0 # !!!
 
-        if args.tcp_rel:
-            if args.multi_step_action == 1:
-                actions = world_to_tcp_frame(actions, states)
-            else:
-                bs, seq_len = actions.shape[:2]
-                robot_obs = batch_calvin[5].to(device_id, dtype=cast_dtype, non_blocking=True)
-                actions = world_to_tcp_frame(actions, robot_obs)
-                actions = actions.view(bs, seq_len, args.multi_step_action, -1)
+        actions = batch_calvin['actions'][:, :args.window_size, :7].to(device_id, non_blocking=True).to(torch.float32)
+        
+        # if 0 in batch_calvin['index']:
+        #     breakpoint()
 
-        # label. [:6] is the joint position and [6:] is the gripper control, which is -1, 1, thus we need to convert it to 0, 1
         actions[..., 6:] = (actions[..., 6:] + 1) // 2
+        # actions[..., :6] /= 2
 
         # prepare input and label
-        input_image_primary = images_primary[:, :args.sequence_length, :]
+        input_image_left = images_left[:, :args.sequence_length, :]
+        input_image_right = images_right[:, :args.sequence_length, :]
         input_image_wrist = images_wrist[:, :args.sequence_length, :]
         input_text_token = text_tokens[:, :args.sequence_length, :]
         input_state = states[:, :args.sequence_length, :]
-        
         label_action = actions[:, :args.sequence_length, :].unsqueeze(-2)
 
-        with autocast():  # image_primary, image_wrist, state, language_instruction
+        with autocast():  # image_left, image_wrist, state, language_instruction
             arm_action, gripper_action, image_pred = model(
-                image_primary=input_image_primary,
+                image_left=input_image_left,
+                image_right=input_image_right,
                 image_wrist=input_image_wrist,
                 state=input_state,
                 text_token=input_text_token,
                 epoch=epoch
             )
-            
+        
         loss_arm_action = torch.nn.functional.smooth_l1_loss(arm_action, label_action[:, :, :, :6])
         loss_gripper_action = torch.nn.functional.binary_cross_entropy(gripper_action, label_action[:, :, :, 6:])
 
-        label_image_primary = images_primary[:, args.future_steps:, :].flatten(0, 1)
+        label_image_left = images_left[:, args.future_steps:, :].flatten(0, 1)
+        label_image_right = images_right[:, args.future_steps:, :].flatten(0, 1)
         label_image_wrist = images_wrist[:, args.future_steps:, :].flatten(0, 1)
-        label_image_primary = patchify(label_image_primary, patch_size=args.patch_size)
+        label_image_left = patchify(label_image_left, patch_size=args.patch_size)
+        label_image_right = patchify(label_image_right, patch_size=args.patch_size)
         label_image_wrist = patchify(label_image_wrist, patch_size=args.patch_size)
-        label_image_primary = normalize_patchfied_image(label_image_primary)
+        label_image_left = normalize_patchfied_image(label_image_left)
+        label_image_right = normalize_patchfied_image(label_image_right)
         label_image_wrist = normalize_patchfied_image(label_image_wrist)
-        loss_image = 0.5 * (torch.nn.functional.mse_loss(image_pred[:, 0, :, :], label_image_primary) + torch.nn.functional.mse_loss(image_pred[:, 1, :, :], label_image_wrist))
+        loss_image = 0.5 * (torch.nn.functional.mse_loss(image_pred[:, 0, :, :], label_image_left) + torch.nn.functional.mse_loss(image_pred[:, 1, :, :], label_image_right) + torch.nn.functional.mse_loss(image_pred[:, 2, :, :], label_image_wrist))
 
         loss_calvin = loss_arm_action + 0.01 * loss_gripper_action + 0.1 * loss_image
         loss = loss_calvin / args.gradient_accumulation_steps
@@ -166,7 +178,7 @@ def train_one_epoch_calvin(
         #### BACKWARD PASS ####
         loss.backward()
 
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
 
         # step optimizer and log
         if (((num_steps + 1) % args.gradient_accumulation_steps) == 0) or (
@@ -216,7 +228,7 @@ def train_one_epoch_calvin(
                 )
 
         avg_horizon = min(100, len(mv_avg_loss))
-        t.set_postfix({"avg loss": sum(mv_avg_loss[-avg_horizon:]) / avg_horizon, "loss": loss_calvin.item(), "loss_arm_action": loss_arm_action.item(), "loss_gripper_action": loss_gripper_action.item()})
+        t.set_postfix({"avg loss": sum(mv_avg_loss[-avg_horizon:]) / avg_horizon, "loss": loss_calvin.item(), "loss_arm_action": loss_arm_action.item(), "loss_gripper_action": loss_gripper_action.item(), "loss_image": loss_image.item()})
 
         if args.save_every_iter != -1 and args.save_checkpoint and global_step % args.save_every_iter == 0 and global_step > 0:
                 
@@ -271,3 +283,4 @@ class AverageMeter(object):
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
+
