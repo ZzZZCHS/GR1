@@ -40,11 +40,11 @@ def main():
         config = None
         
     if args.val_domain == "val":
-        TrainUtils.VAL_ENV_INFOS = torch.load("/ailab/user/huanghaifeng/work/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_1024/val_env_infos.pt", map_location="cpu")
+        TrainUtils.VAL_ENV_INFOS = torch.load("/ailab/user/huanghaifeng/work/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_data/val_env_infos.pt", map_location="cpu")
     elif args.val_domain == "val_indomain":
-        TrainUtils.VAL_ENV_INFOS = torch.load("/ailab/user/huanghaifeng/work/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_1024/val_env_infos_indomain.pt", map_location="cpu")
+        TrainUtils.VAL_ENV_INFOS = torch.load("/ailab/user/huanghaifeng/work/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_data/val_env_infos_indomain.pt", map_location="cpu")
     elif args.val_domain == "train":
-        TrainUtils.VAL_ENV_INFOS = torch.load("/ailab/user/huanghaifeng/work/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_1024/train_env_infos.pt", map_location="cpu")
+        TrainUtils.VAL_ENV_INFOS = torch.load("/ailab/user/huanghaifeng/work/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_data/train_env_infos.pt", map_location="cpu")
     else:
         raise NotImplementedError
 
@@ -141,10 +141,9 @@ def main():
         robocasa_config=config
     )
     
-    with open(os.path.join(eval_log_dir, 'log.json'), 'w') as f:
-        json.dump(all_logs, f)
-    
     if device_id == 0:
+        with open(os.path.join(eval_log_dir, 'log.json'), 'w') as f:
+            json.dump(all_logs, f)
         print(all_logs)
 
 if __name__ == "__main__":

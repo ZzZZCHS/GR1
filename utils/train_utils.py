@@ -82,9 +82,9 @@ def train_one_epoch_calvin(
     step_time_m = (
         AverageMeter()
     )  # time for one optimizer step (> 1 batch if using gradient accum)
-    data_time_m = (
+    batch_data_time_m = (
         AverageMeter()
-    )  # avg time to load one batch of both calvin (= 1 batch regardless of gradient accum)
+    )
     end = time.time()
 
     # loop through dataloader
@@ -101,48 +101,29 @@ def train_one_epoch_calvin(
 
     # torch.cuda.synchronize()
     # t0 = time.time()
+    last = time.time()
     
     for num_steps, batch_calvin in t:
+        t0 = time.time()
         # if num_steps == 0:
         #     batch_calvin = batch_calvin_tmp
-        data_time_m.update(time.time() - end)
         global_step = num_steps + epoch * num_batches_per_epoch
         
-        images_dict = {}
-        for cam_name in camera_names:
-            batch_seq_images = batch_calvin['obs'][cam_name][:, :args.window_size, ...]
-            image_list = batch_seq_images.flatten(0, 1).unbind(dim=0)
-            image_list = [Image.fromarray(image.numpy().astype(np.uint8)) for image in image_list]
-            processed_images = image_processor(image_list)
-            images_dict[cam_name] = processed_images.reshape(args.batch_size_calvin, args.window_size, 3, 224, 224)
-        images_left = images_dict['robot0_agentview_left_image'].to(device_id, dtype=cast_dtype, non_blocking=True)
-        images_right = images_dict['robot0_agentview_right_image'].to(device_id, dtype=cast_dtype, non_blocking=True)
-        images_wrist = images_dict['robot0_eye_in_hand_image'].to(device_id, dtype=cast_dtype, non_blocking=True)
-
-        text_tokens = batch_calvin['obs']['lang_emb'][:, :args.window_size, :].to(device_id, non_blocking=True)
+        images_left = batch_calvin['images_left'].to(device_id, non_blocking=True)
+        images_right = batch_calvin['images_right'].to(device_id, non_blocking=True)
+        images_wrist = batch_calvin['images_wrist'].to(device_id, non_blocking=True)
+        text_tokens = batch_calvin['text_tokens'].to(device_id, non_blocking=True)
+        states = batch_calvin['states'].to(device_id, non_blocking=True)
+        actions = batch_calvin['actions'].to(device_id, non_blocking=True)
         
-        states = []
-        for state_name in state_names:
-            states.append(batch_calvin['obs'][state_name][:, :args.window_size, :].to(device_id, non_blocking=True))
-        states = torch.cat(states, dim=-1).to(torch.float32)
-        # states[:, :, :7] += torch.randn(states[:, :, :7].shape).to(states.device) * 0.001 # !!!
-        # states *= 0 # !!!
-
-        actions = batch_calvin['actions'][:, :args.window_size, :7].to(device_id, non_blocking=True).to(torch.float32)
-        
-        # if 0 in batch_calvin['index']:
-        #     breakpoint()
-
-        actions[..., 6:] = (actions[..., 6:] + 1) // 2
-        # actions[..., :6] /= 2
-
-        # prepare input and label
         input_image_left = images_left[:, :args.sequence_length, :]
         input_image_right = images_right[:, :args.sequence_length, :]
         input_image_wrist = images_wrist[:, :args.sequence_length, :]
         input_text_token = text_tokens[:, :args.sequence_length, :]
         input_state = states[:, :args.sequence_length, :]
         label_action = actions[:, :args.sequence_length, :].unsqueeze(-2)
+        
+        batch_data_time_m.update(time.time() - last)
 
         with autocast():  # image_left, image_wrist, state, language_instruction
             arm_action, gripper_action, image_pred = model(
@@ -154,8 +135,8 @@ def train_one_epoch_calvin(
                 epoch=epoch
             )
         
-        loss_arm_action = torch.nn.functional.smooth_l1_loss(arm_action, label_action[:, :, :, :6])
-        loss_gripper_action = torch.nn.functional.binary_cross_entropy(gripper_action, label_action[:, :, :, 6:])
+        loss_arm_action = torch.nn.functional.smooth_l1_loss(arm_action, label_action[:, :, :, :-1])
+        loss_gripper_action = torch.nn.functional.binary_cross_entropy(gripper_action, label_action[:, :, :, -1:])
 
         label_image_left = images_left[:, args.future_steps:, :].flatten(0, 1)
         label_image_right = images_right[:, args.future_steps:, :].flatten(0, 1)
@@ -168,7 +149,7 @@ def train_one_epoch_calvin(
         label_image_wrist = normalize_patchfied_image(label_image_wrist)
         loss_image = 0.5 * (torch.nn.functional.mse_loss(image_pred[:, 0, :, :], label_image_left) + torch.nn.functional.mse_loss(image_pred[:, 1, :, :], label_image_right) + torch.nn.functional.mse_loss(image_pred[:, 2, :, :], label_image_wrist))
 
-        loss_calvin = loss_arm_action + 0.01 * loss_gripper_action + 0.1 * loss_image
+        loss_calvin = loss_arm_action + 0.01 * loss_gripper_action + 0.1 * loss_image # !!!
         loss = loss_calvin / args.gradient_accumulation_steps
         loss_arm_action = loss_arm_action / args.gradient_accumulation_steps
         loss_gripper_action = loss_gripper_action / args.gradient_accumulation_steps
@@ -207,15 +188,15 @@ def train_one_epoch_calvin(
 
                 wandb.log(
                     {
-                        "data_time": data_time_m.avg,
+                        "data_time": batch_data_time_m.avg,
                         "step_time": step_time_m.avg,
                         "calvin_samples_per_second": calvin_samples_per_second,
                         "calvin_samples_per_second_per_gpu": calvin_samples_per_second_per_gpu,
                         "lr": optimizer.param_groups[0]["lr"],
                     },
                 )
-                step_time_m.reset()
-                data_time_m.reset()
+                # step_time_m.reset()
+                # data_time_m.reset()
 
                 wandb.log(
                     {
@@ -227,8 +208,17 @@ def train_one_epoch_calvin(
                     },
                 )
 
+        
         avg_horizon = min(100, len(mv_avg_loss))
-        t.set_postfix({"avg loss": sum(mv_avg_loss[-avg_horizon:]) / avg_horizon, "loss": loss_calvin.item(), "loss_arm_action": loss_arm_action.item(), "loss_gripper_action": loss_gripper_action.item(), "loss_image": loss_image.item()})
+        t.set_postfix({
+            "avg loss": sum(mv_avg_loss[-avg_horizon:]) / avg_horizon, 
+            "loss": loss_calvin.item(), 
+            "loss_arm": loss_arm_action.item(), 
+            "loss_gripper": loss_gripper_action.item(), 
+            "loss_image": loss_image.item(),
+            "data_time": batch_data_time_m.avg,
+            "step_time": step_time_m.avg,
+        })
 
         if args.save_every_iter != -1 and args.save_checkpoint and global_step % args.save_every_iter == 0 and global_step > 0:
                 
@@ -251,6 +241,7 @@ def train_one_epoch_calvin(
                 if args.delete_previous_checkpoint:
                     if epoch > 0:
                         os.remove(ckpt_path)
+        last = time.time()
 
 def get_checkpoint(model):
     state_dict = model.state_dict()

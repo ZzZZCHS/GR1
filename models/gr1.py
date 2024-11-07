@@ -95,6 +95,7 @@ class GR1Agent(nn.Module):
         num_obs_token_per_image=10,
         calvin_input_image_size=224,
         patch_size=16,
+        robomimic_config=None
     ):
         super().__init__()
         self.HIDDEN_DIM = transformer_hidden_dim
@@ -160,10 +161,17 @@ class GR1Agent(nn.Module):
             nn.Linear(192, 192),
             nn.ReLU(),
         )
-        self.arm_action_decoder = nn.Sequential(
-            nn.Linear(192, 6),
-            # torch.nn.Tanh(),  # !!!
-        )
+        if robomimic_config and 'real_actions' in robomimic_config.train.action_keys:
+            self.arm_dim = 7
+            self.arm_action_decoder = nn.Sequential(
+                nn.Linear(192, 7)
+            )
+        else:
+            self.arm_dim = 6
+            self.arm_action_decoder = nn.Sequential(
+                nn.Linear(192, 6),
+                torch.nn.Tanh(),  # !!!
+            )
         self.gripper_action_decoder = nn.Sequential(
             nn.Linear(192, 1),
             torch.nn.Sigmoid(),
@@ -311,7 +319,7 @@ class GR1Agent(nn.Module):
         
         # decode action
         action_pred_feature = self.action_decoder(action_pred_feature.reshape(-1, self.HIDDEN_DIM))
-        arm_action = self.arm_action_decoder(action_pred_feature).view(B, S, -1, 6)
+        arm_action = self.arm_action_decoder(action_pred_feature).view(B, S, -1, self.arm_dim)
         gripper_action = self.gripper_action_decoder(action_pred_feature).view(B, S, -1, 1)
 
 

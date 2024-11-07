@@ -248,9 +248,7 @@ def get_args(is_eval=False):
     parser.add_argument("--transformer_heads", type=int, default=12)
     
     parser.add_argument("--encoder_decoder", default=False, action="store_true")
-    parser.add_argument("--transformer_decoder_layers", type=int, default=8)
     parser.add_argument("--decoder_no_self_attn", default=False, action="store_true")
-    parser.add_argument("--decoder_causal_mask", default=False, action="store_true")
     parser.add_argument("--conv_vision_encoder", default=False, action="store_true")
     
     # finetune_from_checkpoint

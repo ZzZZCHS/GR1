@@ -5,14 +5,14 @@ export GIT_PYTHON_REFRESH=quiet
 node=1
 node_num=1
 
-resume_from_checkpoint=./pretrain//exp/20241104_171829_robomimic_train_1_door_bs4_lr1e-3_steps500_decay0.01/499.pth
+resume_from_checkpoint=/ailab/user/huanghaifeng/work/robocasa_exps_haifeng/GR1/pretrain/exp/20241106_133343_robomimic_train_1_noimageloss_bs1_lr2e-4_steps1000_decay0.0/999.pth
 IFS='/' read -ra path_parts <<< "$resume_from_checkpoint"
 run_name="${path_parts[-2]}"
 log_name="${path_parts[-1]}"
 log_folder="eval_logs/$run_name"
 mkdir -p "$log_folder"
 log_file="eval_logs/$run_name/evaluate_$log_name.log"
-torchrun --nnodes=${node} --nproc_per_node=${node_num} --master_port=10081 eval_robocasa.py \
+torchrun --nnodes=${node} --nproc_per_node=${node_num} --master_port=10082 eval_robocasa.py \
     --checkpoint_path ./pretrain \
     --traj_cons \
     --rgb_pad 10 \
@@ -32,8 +32,8 @@ torchrun --nnodes=${node} --nproc_per_node=${node_num} --master_port=10081 eval_
     --precision fp32 \
     --learning_rate 1e-4 \
     --num_resampler_query 6 \
-    --run_name ep499 \
-    --config "configs/noadd_opendoor.json" \
+    --run_name ep999 \
+    --config "configs/noadd.json" \
     --val_domain train \
     --resume_from_checkpoint ${resume_from_checkpoint} | tee ${log_file}
     # --calvin_dataset ${calvin_dataset_path} \

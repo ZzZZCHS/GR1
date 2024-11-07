@@ -1288,14 +1288,13 @@ def get_calvin_dataset(args, image_processor, tokenizer, epoch=0, floor=False, k
 
 def get_robomimic_dataset(args, image_processor, tokenizer, epoch=0, floor=False, key='lang', config=None):
     shared_epoch = SharedEpoch(epoch=epoch)
-    # preprocess_image_fn = functools.partial(
-    #     preprocess_image, image_processor=image_processor
-    # )
+    preprocess_image_fn = functools.partial(
+        preprocess_image, image_processor=image_processor
+    )
     preprocess_text_fn = functools.partial(preprocess_text_calvin, tokenizer=tokenizer)
     
-    all_obs_keys = ['robot0_agentview_left_image', 'robot0_agentview_right_image', 'robot0_base_pos', 'robot0_base_quat', 'robot0_base_to_eef_pos', 'robot0_base_to_eef_quat', 'robot0_eye_in_hand_image', 'robot0_gripper_qpos']
     trainset, _ = TrainUtils.load_data_for_training(
-        config, obs_keys=all_obs_keys, lang_encoder=preprocess_text_fn)
+        config, obs_keys=config.all_obs_keys, lang_encoder=preprocess_text_fn)
     
     round_fn = math.floor if floor else math.ceil
     num_samples = len(trainset)
@@ -1317,6 +1316,8 @@ def get_robomimic_dataset(args, image_processor, tokenizer, epoch=0, floor=False
         drop_last=True
     )
     
+    collator_fn = functools.partial(robomimic_collator, image_processor=preprocess_image_fn, args=args)
+    
     dataloader = DataLoader(
         trainset,
         batch_size=args.batch_size_calvin,
@@ -1325,7 +1326,7 @@ def get_robomimic_dataset(args, image_processor, tokenizer, epoch=0, floor=False
         prefetch_factor=3,
         sampler=sampler,
         persistent_workers=True,
-        # collate_fn=trainset.collator,
+        collate_fn=collator_fn,
         drop_last=True
     )
     
@@ -1408,28 +1409,6 @@ def get_calvin_val_dataset(args, image_processor, tokenizer, epoch=0, floor=Fals
     return DataInfo(dataloader=dataloader, shared_epoch=shared_epoch, sampler=sampler, dataset=calvin_dataset)
 
 
-if __name__ == "__main__":
-    from utils.arguments_utils import get_args
-    from tqdm import tqdm
-
-    args = get_args()
-
-    device='cuda'
-    model, image_processor = clip.load("ViT-B/32", device=device)
-    calvin_dataset = get_calvin_dataset(args, image_processor, clip, epoch=0)
-    calvin_dataset.set_epoch(epoch=0)
-    calvin_loader = calvin_dataset.dataloader
-    num_batches_per_epoch = calvin_loader.num_batches
-
-    t = tqdm(
-        enumerate(calvin_loader),
-        disable=args.rank != 0,
-        total=num_batches_per_epoch,
-    )
-    mv_avg_loss = []
-    for num_steps, batch in t:
-        print(11)
-
 def world_to_tcp_frame(action, robot_obs):
     with autocast(dtype=torch.float32):
         flag = False
@@ -1494,3 +1473,70 @@ def tcp_to_world_frame(action, robot_obs):
             action_w = action_w.view(b, s, -1, action_w.shape[-1])
         assert not torch.any(action_w.isnan())
     return action_w
+
+
+def robomimic_collator(samples, image_processor, args):
+    camera_names = ['robot0_agentview_left_image', 'robot0_agentview_right_image', 'robot0_eye_in_hand_image']
+    state_names = ['robot0_base_to_eef_pos', 'robot0_base_to_eef_quat', 'robot0_gripper_qpos']
+    images_dict = {}
+    for cam_name in camera_names:
+        if cam_name not in samples[0]['obs']:
+            tmp_cam_name = 'robot0_agentview_left_image'
+        else:
+            tmp_cam_name = cam_name
+        batch_seq_images = torch.tensor(np.array([sample['obs'][tmp_cam_name][:args.window_size, ...] for sample in samples]))
+        image_list = batch_seq_images.flatten(0, 1).unbind(dim=0)
+        image_list = [Image.fromarray(image.numpy().astype(np.uint8)) for image in image_list]
+        processed_images = image_processor(image_list)
+        images_dict[cam_name] = processed_images.reshape(args.batch_size_calvin, args.window_size, 3, 224, 224)
+    images_left = images_dict['robot0_agentview_left_image']
+    images_right = images_dict['robot0_agentview_right_image']
+    images_wrist = images_dict['robot0_eye_in_hand_image']
+    
+    text_tokens = torch.tensor(np.array([sample['obs']['lang_emb'][:args.window_size, :] for sample in samples]))
+    
+    states = []
+    for state_name in state_names:
+        tmp_state = torch.tensor(np.array([sample['obs'][state_name][:args.window_size, :] for sample in samples]))
+        states.append(tmp_state)
+    states = torch.cat(states, dim=-1).to(torch.float32)
+
+    if 'real_actions' in samples[0]:
+        actions = torch.tensor(np.array([sample['actions'][:args.window_size, :8] for sample in samples])).to(torch.float32)
+        actions[..., 7:] = (actions[..., 7:] > 0)
+    else:
+        actions = torch.tensor(np.array([sample['actions'][:args.window_size, :7] for sample in samples])).to(torch.float32)
+        actions[..., 6:] = (actions[..., 6:] + 1) // 2
+    
+    
+    return {
+        "images_left": images_left,
+        "images_right": images_right,
+        "images_wrist": images_wrist,
+        "text_tokens": text_tokens,
+        "states": states,
+        "actions": actions
+    }
+    
+    
+if __name__ == "__main__":
+    from utils.arguments_utils import get_args
+    from tqdm import tqdm
+
+    args = get_args()
+
+    device='cuda'
+    model, image_processor = clip.load("ViT-B/32", device=device)
+    calvin_dataset = get_calvin_dataset(args, image_processor, clip, epoch=0)
+    calvin_dataset.set_epoch(epoch=0)
+    calvin_loader = calvin_dataset.dataloader
+    num_batches_per_epoch = calvin_loader.num_batches
+
+    t = tqdm(
+        enumerate(calvin_loader),
+        disable=args.rank != 0,
+        total=num_batches_per_epoch,
+    )
+    mv_avg_loss = []
+    for num_steps, batch in t:
+        print(11)

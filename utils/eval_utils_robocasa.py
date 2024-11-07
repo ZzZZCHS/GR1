@@ -48,7 +48,7 @@ EP_LEN = 360
 NUM_SEQUENCES = 50
 
 import h5py
-f = h5py.File('/ailab/user/huanghaifeng/work/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_1024/OpenSingleDoor.hdf5', 'r')
+f = h5py.File('/ailab/user/huanghaifeng/work/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_data/PnPCounterToCab.hdf5', 'r')
 
 
 def make_env(dataset_path, robocasa_config):
@@ -239,8 +239,8 @@ def evaluate_policy_ddp(model, env, epoch, calvin_conf_path, eval_log_dir=None, 
     eval_ep_ids = range(device_id*interval_len, min((device_id+1)*interval_len, NUM_SEQUENCES))
     env_name = env.name
     video_writer = None
-    
-    print(f'start evaluating {env_name}...')
+    if device_id == 0:
+        print(f'start evaluating {env_name}...')
     video_dir = os.path.join(eval_log_dir, 'videos')
     os.makedirs(video_dir, exist_ok=True)
     video_path = os.path.join(video_dir, f"{env_name}_{device_id}.mp4")
@@ -252,7 +252,7 @@ def evaluate_policy_ddp(model, env, epoch, calvin_conf_path, eval_log_dir=None, 
     num_success = 0
     num_contact = 0
     for ep_i in eval_ep_ids:
-        # if ep_i != 1: # !!!
+        # if ep_i != 0: # !!!
         #     continue
         initial_state = TrainUtils.VAL_ENV_INFOS[env_name][ep_i]
         rollout_timestamp = time.time()

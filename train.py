@@ -72,6 +72,7 @@ def main():
         num_obs_token_per_image=args.num_obs_token_per_image,
         calvin_input_image_size=args.calvin_input_image_size,
         patch_size=args.patch_size,
+        robomimic_config=config
     )
 
     if args.data_type == "calvin":
@@ -118,8 +119,7 @@ def main():
     model.vision_encoder.requires_grad_(False)
     model = model.to(device_id)
     model._init_model_type()
-    # print(sum(p.numel() for p in model.image_decoder.parameters() if p.requires_grad))
-    # sum(p.numel() for p in PerceiverResampler(dim=512, num_latents=64).parameters() if p.requires_grad)
+    print(sum(p.numel() for p in model.parameters() if p.requires_grad))
     
     ddp_model = DDP(model, device_ids=[device_id], find_unused_parameters=True)
 

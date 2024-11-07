@@ -265,8 +265,8 @@ class SequenceDataset(torch.utils.data.Dataset):
         # )
         
         if len(self._demo_id_to_demo_lang_str) > 0:
-            print("getting language embeddings...")
-            for ep_batch in tqdm(np.array_split(self.demos, int(math.ceil(len(self.demos) / 64)))):
+            # print("getting language embeddings...")
+            for ep_batch in np.array_split(self.demos, int(math.ceil(len(self.demos) / 64))):
                 # get language embedding
                 lang_batch = [self._demo_id_to_demo_lang_str[ep] for ep in ep_batch]
                 emb_batch = self.lang_encoder.get_lang_emb(lang_batch)
