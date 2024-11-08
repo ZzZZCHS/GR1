@@ -150,6 +150,21 @@ class ModelWrapper:
         image_right_x = self.image_process_fn([image_right])
         # expand image dimension
         image_right_x = image_right_x.unsqueeze(1).to(dtype=self.cast_type)
+        
+        mask_names = ['robot0_agentview_left_mask', 'robot0_agentview_right_mask', 'robot0_eye_in_hand_mask']
+        masks = None
+        if mask_names[0] in obs:
+            masks = []
+            for mask_name in mask_names:
+                tmp_mask = obs[mask_name]
+                target_obj_mask = torch.tensor((tmp_mask == 1)).to(torch.float32)
+                target_place_mask = torch.tensor((tmp_mask == 2)).to(torch.float32)
+                target_obj_mask = torch.nn.functional.interpolate(target_obj_mask, size=(14, 14), mode='bicubic', align_corners=True)
+                target_place_mask = torch.nn.functional.interpolate(target_place_mask, size=(14, 14), mode='bicubic', align_corners=True)
+                masks.extend([target_obj_mask, target_place_mask])
+            masks = torch.stack(masks, dim=1).flatten(-2, -1) > 0
+            masks = masks.squeeze(2)
+            
 
         gripper = obs['robot0_eye_in_hand_image'][-1].transpose(1, 2, 0)
         gripper = Image.fromarray((gripper * 255).astype(np.uint8))
@@ -212,6 +227,7 @@ class ModelWrapper:
                 image_wrist=input_image_wrist,
                 state=input_state,
                 text_token=input_text_token,
+                masks=masks
             )
             action = torch.concat((arm_action[0, :, 0, :].clamp(min=-1., max=1.), gripper_action[0, :, 0, :] > 0.5), dim=-1)
             action[:, -1] = (action[:, -1] - 0.5) * 2  # scale to -1 or 1
@@ -326,44 +342,46 @@ def run_rollout(
     video_frames = []
     camera_names = ["robot0_agentview_left", "robot0_agentview_right", "robot0_eye_in_hand"]
     
-    # if args.use_gt_mask:
-    #     target_obj_str = env.env.env.target_obj_str
-    #     if target_obj_str == "obj":
-    #         target_obj_str += "_main"
-    #     target_place_str = env.env.env.target_place_str
+    masked_dict = {}
+    if args.addmask:
+        # print('getting mask...')
+        image_size = 256
+        target_obj_str = env.env.env.target_obj_str
+        if target_obj_str == "obj":
+            target_obj_str += "_main"
+        target_place_str = env.env.env.target_place_str
         
-    #     masked_dict = {}
-    #     geom2body_id_mapping = {geom_id: body_id for geom_id, body_id in enumerate(env.env.env.sim.model.geom_bodyid)}
-    #     name2id = env.env.env.sim.model._body_name2id
-    #     for cam_name in camera_names:
-    #         seg = env.env.env.sim.render(
-    #             camera_name=cam_name,
-    #             width=args.image_size,
-    #             height=args.image_size,
-    #             depth=False,
-    #             segmentation=True
-    #         )
-    #         seg = seg[::-1, :, 1]
-    #         tmp_seg = (
-    #             np.fromiter(
-    #                 map(
-    #                     lambda x: geom2body_id_mapping.get(x, -1),
-    #                     seg.flatten()
-    #                 ),
-    #                 dtype=np.int32
-    #             ).reshape(args.image_size, args.image_size)
-    #         )
-    #         tmp_mask = np.zeros(tmp_seg.shape, dtype=np.uint8)
-    #         for tmp_target_obj_str in target_obj_str.split('/'):
-    #             tmp_mask[tmp_seg == name2id[tmp_target_obj_str]] = 1
-    #         if target_place_str:
-    #             tmp_mask[tmp_seg == name2id[target_place_str]] = 2
-    #             if (tmp_seg == name2id[target_place_str]).sum() == 0 and target_place_str == "container_main" and name2id[target_place_str] == name2id[None] - 1:
-    #                 tmp_mask[tmp_seg == name2id[None]] = 2
-    #         tmp_mask = tmp_mask.astype(np.float32) / 2.
-    #         tmp_mask = np.expand_dims(tmp_mask, axis=0)
-    #         tmp_mask = np.expand_dims(tmp_mask, axis=0).repeat(ob_dict[f"{cam_name}_image"].shape[0], axis=0)
-    #         masked_dict[f"{cam_name}_mask"] = tmp_mask
+        geom2body_id_mapping = {geom_id: body_id for geom_id, body_id in enumerate(env.env.env.sim.model.geom_bodyid)}
+        name2id = env.env.env.sim.model._body_name2id
+        for cam_name in camera_names:
+            seg = env.env.env.sim.render(
+                camera_name=cam_name,
+                width=image_size,
+                height=image_size,
+                depth=False,
+                segmentation=True
+            )
+            seg = seg[::-1, :, 1]
+            tmp_seg = (
+                np.fromiter(
+                    map(
+                        lambda x: geom2body_id_mapping.get(x, -1),
+                        seg.flatten()
+                    ),
+                    dtype=np.int32
+                ).reshape(image_size, image_size)
+            )
+            tmp_mask = np.zeros(tmp_seg.shape, dtype=np.uint8)
+            for tmp_target_obj_str in target_obj_str.split('/'):
+                tmp_mask[tmp_seg == name2id[tmp_target_obj_str]] = 1
+            if target_place_str:
+                tmp_mask[tmp_seg == name2id[target_place_str]] = 2
+                if (tmp_seg == name2id[target_place_str]).sum() == 0 and target_place_str == "container_main" and name2id[target_place_str] == name2id[None] - 1:
+                    tmp_mask[tmp_seg == name2id[None]] = 2
+            # tmp_mask = tmp_mask.astype(np.float32) / 2.
+            tmp_mask = np.expand_dims(tmp_mask, axis=0)
+            tmp_mask = np.expand_dims(tmp_mask, axis=0).repeat(ob_dict[f"{cam_name}_image"].shape[0], axis=0)
+            masked_dict[f"{cam_name}_mask"] = tmp_mask
     
     for step_i in range(horizon): #LogUtils.tqdm(range(horizon)):
         # for cam_name in camera_names:
@@ -384,7 +402,7 @@ def run_rollout(
         #         env.obs_history[depth_name].append(depth[None])
         #     ob_dict = env._get_stacked_obs_from_history()
         
-        # ob_dict.update(masked_dict)
+        ob_dict.update(masked_dict)
         
         
         # get action from policy

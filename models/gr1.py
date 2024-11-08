@@ -235,7 +235,7 @@ class GR1Agent(nn.Module):
         self.mask_token = self.mask_token.type(self.image_decoder_type)
         self.image_decoder_pred_type = next(self.image_decoder_pred.parameters()).type()
 
-    def forward(self, image_left, image_right, image_wrist, state, text_token, epoch=0):
+    def forward(self, image_left, image_right, image_wrist, state, text_token, epoch=0, masks=None):
         device = image_left.device
         B, S, _ = state.shape
         S_AND_FUTURE = image_left.shape[1]
@@ -286,9 +286,19 @@ class GR1Agent(nn.Module):
         image_wrist_feature = image_wrist_feature[:, :, idx:, :]
 
         # perceiver resampler
-        image_left_feature = self.perceiver_resampler(image_left_feature.reshape(B*S, 196, self.RESAMPLER_HIDDEN_DIM).unsqueeze(1).unsqueeze(1))  # mae vit outputs 196 tokens
-        image_right_feature = self.perceiver_resampler(image_right_feature.reshape(B*S, 196, self.RESAMPLER_HIDDEN_DIM).unsqueeze(1).unsqueeze(1)) 
-        image_wrist_feature = self.perceiver_resampler(image_wrist_feature.reshape(B*S, 196, self.RESAMPLER_HIDDEN_DIM).unsqueeze(1).unsqueeze(1))
+        image_left_feature = self.perceiver_resampler(
+            image_left_feature.reshape(B*S, 196, self.RESAMPLER_HIDDEN_DIM).unsqueeze(1).unsqueeze(1),
+            mask=masks[:, :2] if masks is not None else None
+            
+        )  # mae vit outputs 196 tokens
+        image_right_feature = self.perceiver_resampler(
+            image_right_feature.reshape(B*S, 196, self.RESAMPLER_HIDDEN_DIM).unsqueeze(1).unsqueeze(1),
+            mask=masks[:, 2:4] if masks is not None else None
+        ) 
+        image_wrist_feature = self.perceiver_resampler(
+            image_wrist_feature.reshape(B*S, 196, self.RESAMPLER_HIDDEN_DIM).unsqueeze(1).unsqueeze(1),
+            mask=masks[:, 4:] if masks is not None else None
+        )
         image_left_embedding = self.image_left_projector(image_left_feature.flatten(0, 2)).view(B, S, -1, self.HIDDEN_DIM)
         image_right_embedding = self.image_right_projector(image_right_feature.flatten(0, 2)).view(B, S, -1, self.HIDDEN_DIM)
         image_wrist_embedding = self.image_wrist_projector(image_wrist_feature.flatten(0, 2)).view(B, S, -1, self.HIDDEN_DIM)          

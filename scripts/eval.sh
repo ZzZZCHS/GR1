@@ -3,7 +3,7 @@ export GIT_PYTHON_REFRESH=quiet
 # calvin_conf_path='/mnt/hwfile/OpenRobotLab/huanghaifeng/GR1/calvin/calvin_models/conf'
 
 node=1
-node_num=8
+node_num=$1
 
 lr=5e-4
 weight_decay=1e-3
@@ -12,13 +12,20 @@ transformer_hidden_dim=512
 transformer_heads=8
 num_resampler_query=9
 
-resume_from_checkpoint=/ailab/user/huanghaifeng/work/robocasa_exps_haifeng/GR1/pretrain/exp/20241107_032924_robomimic_train_countertocab_bs8_lr5e-4_ep20_decay1e-3_layers6_dim512_heads8_samplernum9/5.pth
+ckpt_dir=$2
+ep=$3
+resume_from_checkpoint=${ckpt_dir}/${ep}.pth
+val_domain=$4
+tmp_run_name=ep${ep}_${val_domain}_friction1
+addmask=$5
+
 IFS='/' read -ra path_parts <<< "$resume_from_checkpoint"
 run_name="${path_parts[-2]}"
 log_name="${path_parts[-1]}"
 log_folder="eval_logs/$run_name"
 mkdir -p "$log_folder"
 log_file="eval_logs/$run_name/evaluate_$log_name.log"
+
 torchrun --nnodes=${node} --nproc_per_node=${node_num} --master_port=10081 eval_robocasa.py \
     --checkpoint_path ./pretrain \
     --traj_cons \
@@ -43,9 +50,10 @@ torchrun --nnodes=${node} --nproc_per_node=${node_num} --master_port=10081 eval_
     --transformer_layers $transformer_layers \
     --transformer_hidden_dim $transformer_hidden_dim \
     --transformer_heads $transformer_heads \
-    --run_name ep5_val_friction1 \
+    --run_name $tmp_run_name \
     --config "configs/noadd.json" \
-    --val_domain val \
+    --val_domain $val_domain \
+    --addmask $addmask \
     --resume_from_checkpoint ${resume_from_checkpoint} | tee ${log_file}
     # --calvin_dataset ${calvin_dataset_path} \
     # --calvin_conf_path ${calvin_conf_path} \

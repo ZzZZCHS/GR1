@@ -15,6 +15,18 @@ def random_seed(seed=42, rank=0):
     torch.manual_seed(seed + rank)
     np.random.seed(seed + rank)
     random.seed(seed + rank)
+    
+    
+def str2bool(value):
+    if isinstance(value, bool):
+        return value
+    if value.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif value.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError("Boolean value expected.")
+
 
 def world_info_from_env():
     local_rank = 0
@@ -144,6 +156,12 @@ def get_args(is_eval=False):
         "--val_domain",
         type=str,
         default="train"
+    )
+    
+    parser.add_argument(
+        "--addmask",
+        type=str2bool,
+        default=False
     )
 
     # history window size when evaluating, for FC head equals to hist_window, for LSTM head means refresh frequency

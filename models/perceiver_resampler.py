@@ -32,7 +32,7 @@ class PerceiverAttention(nn.Module):
         self.to_kv = nn.Linear(dim, inner_dim * 2, bias=False)
         self.to_out = nn.Linear(inner_dim, dim, bias=False)
 
-    def forward(self, x, latents):
+    def forward(self, x, latents, mask=None):
         """
         Args:
             x (torch.Tensor): image features
@@ -50,13 +50,28 @@ class PerceiverAttention(nn.Module):
         k, v = self.to_kv(kv_input).chunk(2, dim=-1)
         q, k, v = rearrange_many((q, k, v), "b t n (h d) -> b h t n d", h=h)
         q = q * self.scale
-
         # attention
         sim = einsum("... i d, ... j d  -> ... i j", q, k)
         sim = sim - sim.amax(dim=-1, keepdim=True).detach()
         attn = sim.softmax(dim=-1)
-
         out = einsum("... i j, ... j d -> ... i d", attn, v)
+        
+        if mask is not None:
+            d = mask.shape[-1]
+            mask1 = mask[:, 0].unsqueeze(1).unsqueeze(1).unsqueeze(1)
+            mask2 = mask[:, 1].unsqueeze(1).unsqueeze(1).unsqueeze(1)
+            sim1 = sim.detach().clone()
+            sim1[..., :d].masked_fill_(~mask1, -1e5)
+            sim1[..., d:] = -1e5
+            sim2 = sim.detach().clone()
+            sim2[..., :d].masked_fill_(~mask2, -1e5)
+            sim2[..., d:] = -1e5
+            attn1 = sim1.softmax(dim=-1)
+            attn2 = sim2.softmax(dim=-1)
+            out1 = einsum("... i j, ... j d -> ... i d", attn1, v)
+            out2 = einsum("... i j, ... j d -> ... i d", attn2, v)
+            out = out + out1 + out2
+
         out = rearrange(out, "b h t n d -> b t n (h d)", h=h)
         return self.to_out(out)
 
@@ -100,7 +115,7 @@ class PerceiverResampler(nn.Module):
 
         self.norm = nn.LayerNorm(dim)
 
-    def forward(self, x):
+    def forward(self, x, mask=None):
         """
         Args:
             x (torch.Tensor): image features
@@ -109,7 +124,6 @@ class PerceiverResampler(nn.Module):
             shape (b, T, n, D) where n is self.num_latents
         """
         b, T, F, v = x.shape[:4]
-
         # frame and media time embeddings
         if exists(self.frame_embs):
             frame_embs = repeat(self.frame_embs[:F], "F d -> b T F v d", b=b, T=T, v=v)
@@ -123,6 +137,6 @@ class PerceiverResampler(nn.Module):
         # blocks
         latents = repeat(self.latents, "n d -> b T n d", b=b, T=T)
         for attn, ff in self.layers:
-            latents = attn(x, latents) + latents
+            latents = attn(x, latents, mask) + latents
             latents = ff(latents) + latents
         return self.norm(latents)

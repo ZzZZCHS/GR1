@@ -4,19 +4,20 @@ export MASTER_PORT=$((54000 + $RANDOM % 10000))
 data_dir='/ailab/user/huanghaifeng/work/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_data'
 
 node=1
-node_num=4
+node_num=8
 
-exp_name=robomimic_train_real
+exp_name=robomimic_train_addmask
 batch_size=8
 lr=5e-4
-weight_decay=1e-3
-epochs=20
+weight_decay=1e-2
+epochs=5
 transformer_layers=6
 transformer_hidden_dim=512
 transformer_heads=8
 num_resampler_query=9
+addmask=True
 
-run_name="$(date +"%Y%m%d_%H%M%S")"_"$exp_name"_bs"$batch_size"_lr"$lr"_ep"$epochs"_decay"$weight_decay"_layers"$transformer_layers"_dim"$transformer_hidden_dim"_heads"$transformer_heads"_samplernum"$num_resampler_query"
+run_name="$(date +"%Y%m%d_%H%M%S")"_"$exp_name"_bs"$batch_size"_lr"$lr"_ep"$epochs"_decay"$weight_decay"_layers"$transformer_layers"_dim"$transformer_hidden_dim"_heads"$transformer_heads"_samplernum"$num_resampler_query"_addmask"$addmask"
 
 which python
 which torchrun
@@ -36,7 +37,7 @@ torchrun --nnodes=${node} --nproc_per_node=${node_num} --master_port=${MASTER_PO
     --commit \
     --num_epochs $epochs \
     --seed 42 \
-    --gradient_accumulation_steps 1 \
+    --gradient_accumulation_steps 4 \
     --batch_size_calvin $batch_size \
     --precision fp32 \
     --learning_rate $lr \
@@ -47,7 +48,8 @@ torchrun --nnodes=${node} --nproc_per_node=${node_num} --master_port=${MASTER_PO
     --transformer_hidden_dim $transformer_hidden_dim \
     --transformer_heads $transformer_heads \
     --save_checkpoint \
-    --config "configs/real_data.json" \
+    --config "configs/addmask.json" \
+    --addmask $addmask \
     --report_to_wandb
     # --data_dir "$data_dir"
     # --calvin_dataset "$calvin_dataset_path" \

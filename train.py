@@ -126,7 +126,7 @@ def main():
     optimizer = torch.optim.AdamW([p for p in ddp_model.parameters() if p.requires_grad], lr=args.learning_rate, weight_decay=args.weight_decay)  # TODO make sure the parameters which need to be optimized are passing
 
     total_training_steps = calvin_dataset.dataloader.num_batches * args.num_epochs
-    args.warmup_steps = calvin_dataset.dataloader.num_batches 
+    args.warmup_steps = calvin_dataset.dataloader.num_batches
 
     if args.rank == 0:
         print(f"Total training steps: {total_training_steps}")
