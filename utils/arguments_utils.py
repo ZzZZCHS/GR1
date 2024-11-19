@@ -311,5 +311,8 @@ def get_args(is_eval=False):
         os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
     args.local_rank, args.rank, args.world_size = world_info_from_env()
+    
+    if args.addmask:
+        args.num_resampler_query *= 3
 
     return args

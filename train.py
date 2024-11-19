@@ -55,6 +55,7 @@ def main():
     os.environ["WANDB_DIR"] = f"{os.path.abspath(args.checkpoint_path)}"
 
     args.local_rank, args.rank, args.world_size = world_info_from_env()
+    
 
     device_id = init_distributed_device(args)
     print("device_id: ", device_id)
@@ -74,6 +75,9 @@ def main():
         patch_size=args.patch_size,
         robomimic_config=config
     )
+    
+    # print(model.image_processor)
+    # breakpoint()
 
     if args.data_type == "calvin":
         calvin_dataset = get_calvin_dataset(args, model.image_processor, clip, epoch=0)

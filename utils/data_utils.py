@@ -51,6 +51,7 @@ import clip
 from scipy.spatial.transform import Rotation as R
 import cv2
 import h5py
+import torchvision.transforms as T
 
 Image.MAX_IMAGE_PIXELS = 1000000000
 MAX_NUM_TOKENS = 256
@@ -1475,17 +1476,24 @@ def tcp_to_world_frame(action, robot_obs):
     return action_w
 
 
+
+mask_processor = T.Compose([
+    T.Resize(224, interpolation=T.InterpolationMode.NEAREST),
+    T.CenterCrop((224, 224)),
+    T.ToTensor()
+])
+
+
 def robomimic_collator(samples, image_processor, args):
     image_names = ['robot0_agentview_left_image', 'robot0_agentview_right_image', 'robot0_eye_in_hand_image']
     mask_names = ['robot0_agentview_left_mask', 'robot0_agentview_right_mask', 'robot0_eye_in_hand_mask']
     state_names = ['robot0_base_to_eef_pos', 'robot0_base_to_eef_quat', 'robot0_gripper_qpos']
     images_dict = {}
+    tmp_shape = None
     for image_name in image_names:
         if image_name not in samples[0]['obs']:
-            tmp_image_name = 'robot0_agentview_left_image'
-        else:
-            tmp_image_name = image_name
-        batch_seq_images = torch.tensor(np.array([sample['obs'][tmp_image_name][:args.window_size, ...] for sample in samples]))
+            continue
+        batch_seq_images = torch.tensor(np.array([sample['obs'][image_name][:args.window_size, ...] for sample in samples]))
         # batch_seq_images = batch_seq_images.view(-1, 256, 256, 3).permute(0, 3, 1, 2)
         # batch_seq_images = torch.nn.functional.interpolate(batch_seq_images, size=(224, 224), mode='bilinear', align_corners=False).permute(0, 2, 3, 1).view(-1, args.window_size, 224, 224, 3)
         # exit()
@@ -1493,10 +1501,11 @@ def robomimic_collator(samples, image_processor, args):
         image_list = [Image.fromarray(image.numpy().astype(np.uint8)) for image in image_list]
         processed_images = image_processor(image_list)
         images_dict[image_name] = processed_images.reshape(args.batch_size_calvin, args.window_size, 3, 224, 224)
-    images_left = images_dict['robot0_agentview_left_image']
-    images_right = images_dict['robot0_agentview_right_image']
-    images_wrist = images_dict['robot0_eye_in_hand_image']
+        tmp_shape = images_dict[image_name].shape
     
+    for image_name in image_names:
+        if image_name not in samples[0]['obs']:
+            images_dict[image_name] = torch.zeros(tmp_shape)
     # Image.fromarray((images_left[0][0].permute(1, 2, 0).numpy()[:,:,::-1]*255).astype(np.uint8)).save('tmp_image.jpg')
     # exit()
     
@@ -1510,7 +1519,18 @@ def robomimic_collator(samples, image_processor, args):
             target_obj_mask = torch.nn.functional.interpolate(target_obj_mask, size=(14, 14), mode='bicubic', align_corners=True)
             target_place_mask = torch.nn.functional.interpolate(target_place_mask, size=(14, 14), mode='bicubic', align_corners=True)
             masks.extend([target_obj_mask, target_place_mask])
+            
+            tmp_mask = torch.tensor(tmp_mask).squeeze(-1).to(torch.uint8)
+            tmp_mask = torch.nn.functional.interpolate(tmp_mask, size=(224, 224), mode='nearest').unsqueeze(2)
+            image_name = mask_name.replace('mask', 'image')
+            images_dict[image_name] = torch.cat([images_dict[image_name], tmp_mask], dim=2)
+            
         masks = torch.stack(masks, dim=2).flatten(-2, -1) > 0
+    
+    
+    images_left = images_dict['robot0_agentview_left_image']
+    images_right = images_dict['robot0_agentview_right_image']
+    images_wrist = images_dict['robot0_eye_in_hand_image']
     
     text_tokens = torch.tensor(np.array([sample['obs']['lang_emb'][:args.window_size, :] for sample in samples]))
     

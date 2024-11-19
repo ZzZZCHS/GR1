@@ -40,11 +40,15 @@ def main():
         config = None
         
     if args.val_domain == "val":
-        TrainUtils.VAL_ENV_INFOS = torch.load("/ailab/user/huanghaifeng/work/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_data/val_env_infos.pt", map_location="cpu")
+        TrainUtils.VAL_ENV_INFOS = torch.load("/ailab/user/huanghaifeng/work/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_data_old/val_env_infos.pt", map_location="cpu")
     elif args.val_domain == "val_indomain":
-        TrainUtils.VAL_ENV_INFOS = torch.load("/ailab/user/huanghaifeng/work/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_data/val_env_infos_indomain.pt", map_location="cpu")
+        TrainUtils.VAL_ENV_INFOS = torch.load("/ailab/user/huanghaifeng/work/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_data_old/val_env_infos_indomain.pt", map_location="cpu")
     elif args.val_domain == "train":
         TrainUtils.VAL_ENV_INFOS = torch.load("/ailab/user/huanghaifeng/work/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_data/train_env_infos.pt", map_location="cpu")
+    elif args.val_domain == "origin":
+        TrainUtils.VAL_ENV_INFOS = torch.load("/ailab/user/huanghaifeng/work/robocasa_exps_haifeng/robocasa/datasets/v0.1/raw_data/val_env_infos_origin.pt", map_location="cpu")
+    elif args.val_domain == "tmp":
+        TrainUtils.VAL_ENV_INFOS = torch.load("/ailab/user/huanghaifeng/work/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_data/tmp_env_infos.pt", map_location="cpu")
     else:
         raise NotImplementedError
 

@@ -16,7 +16,7 @@ ckpt_dir=$2
 ep=$3
 resume_from_checkpoint=${ckpt_dir}/${ep}.pth
 val_domain=$4
-tmp_run_name=ep${ep}_${val_domain}_friction1
+tmp_run_name=ep${ep}_${val_domain}
 addmask=$5
 
 IFS='/' read -ra path_parts <<< "$resume_from_checkpoint"

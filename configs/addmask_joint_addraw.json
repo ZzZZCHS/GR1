@@ -83,7 +83,97 @@
                 "horizon": 500,
                 "do_eval": true,
                 "filter_key": "3000_demos",
-                "path": "/ssd/home/groups/smartbot/huanghaifeng/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_data_old/PnPCounterToCab.hdf5"
+                "path": "/ssd/home/groups/smartbot/huanghaifeng/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_data/PnPCounterToCab.hdf5"
+            },
+            {
+                "horizon": 500,
+                "do_eval": true,
+                "filter_key": "3000_demos",
+                "path": "/ssd/home/groups/smartbot/huanghaifeng/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_data/PnPCabToCounter.hdf5"
+            },
+            {
+                "horizon": 700,
+                "do_eval": true,
+                "filter_key": "3000_demos",
+                "path": "/ssd/home/groups/smartbot/huanghaifeng/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_data/PnPCounterToSink.hdf5"
+            },
+            {
+                "horizon": 500,
+                "do_eval": true,
+                "filter_key": "3000_demos",
+                "path": "/ssd/home/groups/smartbot/huanghaifeng/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_data/PnPSinkToCounter.hdf5"
+            },
+            {
+                "horizon": 600,
+                "do_eval": true,
+                "filter_key": "3000_demos",
+                "path": "/ssd/home/groups/smartbot/huanghaifeng/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_data/PnPCounterToMicrowave.hdf5"
+            },
+            {
+                "horizon": 500,
+                "do_eval": true,
+                "filter_key": "3000_demos",
+                "path": "/ssd/home/groups/smartbot/huanghaifeng/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_data/PnPMicrowaveToCounter.hdf5"
+            },
+            {
+                "horizon": 500,
+                "do_eval": true,
+                "filter_key": "3000_demos",
+                "path": "/ssd/home/groups/smartbot/huanghaifeng/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_data/PnPCounterToStove.hdf5"
+            },
+            {
+                "horizon": 500,
+                "do_eval": true,
+                "filter_key": "3000_demos",
+                "path": "/ssd/home/groups/smartbot/huanghaifeng/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_data/PnPStoveToCounter.hdf5"
+            },
+            {
+                "horizon": 500,
+                "do_eval": false,
+                "filter_key": "3000_demos",
+                "path": "/ssd/home/groups/smartbot/huanghaifeng/robocasa_exps_haifeng/robocasa/datasets/v0.1/raw_data/PnPCounterToCab.hdf5"
+            },
+            {
+                "horizon": 500,
+                "do_eval": false,
+                "filter_key": "3000_demos",
+                "path": "/ssd/home/groups/smartbot/huanghaifeng/robocasa_exps_haifeng/robocasa/datasets/v0.1/raw_data/PnPCabToCounter.hdf5"
+            },
+            {
+                "horizon": 700,
+                "do_eval": false,
+                "filter_key": "3000_demos",
+                "path": "/ssd/home/groups/smartbot/huanghaifeng/robocasa_exps_haifeng/robocasa/datasets/v0.1/raw_data/PnPCounterToSink.hdf5"
+            },
+            {
+                "horizon": 500,
+                "do_eval": false,
+                "filter_key": "3000_demos",
+                "path": "/ssd/home/groups/smartbot/huanghaifeng/robocasa_exps_haifeng/robocasa/datasets/v0.1/raw_data/PnPSinkToCounter.hdf5"
+            },
+            {
+                "horizon": 600,
+                "do_eval": false,
+                "filter_key": "3000_demos",
+                "path": "/ssd/home/groups/smartbot/huanghaifeng/robocasa_exps_haifeng/robocasa/datasets/v0.1/raw_data/PnPCounterToMicrowave.hdf5"
+            },
+            {
+                "horizon": 500,
+                "do_eval": false,
+                "filter_key": "3000_demos",
+                "path": "/ssd/home/groups/smartbot/huanghaifeng/robocasa_exps_haifeng/robocasa/datasets/v0.1/raw_data/PnPMicrowaveToCounter.hdf5"
+            },
+            {
+                "horizon": 500,
+                "do_eval": false,
+                "filter_key": "3000_demos",
+                "path": "/ssd/home/groups/smartbot/huanghaifeng/robocasa_exps_haifeng/robocasa/datasets/v0.1/raw_data/PnPCounterToStove.hdf5"
+            },
+            {
+                "horizon": 500,
+                "do_eval": false,
+                "filter_key": "3000_demos",
+                "path": "/ssd/home/groups/smartbot/huanghaifeng/robocasa_exps_haifeng/robocasa/datasets/v0.1/raw_data/PnPStoveToCounter.hdf5"
             }
         ],
         "output_dir": "~/expdata/robocasa/im/bc_xfmr/10-28-train_noadd",

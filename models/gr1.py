@@ -12,6 +12,7 @@ from models.vit_mae import MaskedAutoencoderViT
 from models.perceiver_resampler import PerceiverResampler
 from models.gpt2 import GPT2Model
 from transformers import GPT2Config
+import torch.utils.checkpoint as checkpoint
 
 
 def generate_attention_mask(K, num_A, num_B):
@@ -110,6 +111,8 @@ class GR1Agent(nn.Module):
         # self.gripper_state_encoder = nn.Linear(2, GRIPPER_STATE_FEATURE_DIM)
         # self.state_projector = nn.Linear(ARM_STATE_FEATURE_DIM + GRIPPER_STATE_FEATURE_DIM, self.HIDDEN_DIM)
         self.state_projector = nn.Linear(9, self.HIDDEN_DIM)
+        
+        self.input_projector = nn.Conv2d(in_channels=4, out_channels=3, kernel_size=1)
 
         # vision encoder (frozen)
         self.vision_encoder = MaskedAutoencoderViT(
@@ -226,6 +229,7 @@ class GR1Agent(nn.Module):
             nn.init.constant_(m.weight, 1.0)
     
     def _init_model_type(self):
+        self.input_projector_type = next(self.input_projector.parameters()).type()
         self.vision_encoder_type = next(self.vision_encoder.parameters()).type()
         self.perceiver_resampler_type = next(self.perceiver_resampler.parameters()).type()
         self.transformer_backbone_type = next(self.transformer_backbone.parameters()).type()
@@ -256,16 +260,35 @@ class GR1Agent(nn.Module):
         state_embedding = self.state_projector(state)
         state_embedding = state_embedding.view(B, S, -1, self.HIDDEN_DIM) # (bs, sequence_length, 1, hidden_dim)
 
+        image_left = image_left.flatten(0, 1)
+        image_right = image_right.flatten(0, 1)
+        image_wrist = image_wrist.flatten(0, 1)
+
+        if image_left.type() != self.input_projector_type:
+            image_left = image_left.type(self.input_projector_type)
+            image_right = image_right.type(self.input_projector_type)
+            image_wrist = image_wrist.type(self.input_projector_type)
+        if image_left.shape[1] == 4:
+            image_left = self.input_projector(image_left)
+            image_right = self.input_projector(image_right)
+            image_wrist = self.input_projector(image_wrist)
+        
         # encode images
         if image_left.type() != self.vision_encoder_type:
             image_left = image_left.type(self.vision_encoder_type)
             image_right = image_right.type(self.vision_encoder_type)
             image_wrist = image_wrist.type(self.vision_encoder_type)
         
-        with torch.no_grad():
-            image_left_feature, _, _ = self.vision_encoder.forward_encoder(image_left.flatten(0, 1), mask_ratio=0.0)
-            image_right_feature, _, _ = self.vision_encoder.forward_encoder(image_right.flatten(0, 1), mask_ratio=0.0)
-            image_wrist_feature, _, _ = self.vision_encoder.forward_encoder(image_wrist.flatten(0, 1), mask_ratio=0.0)
+        if masks is not None:
+            image_left_feature, _, _ = checkpoint.checkpoint(self.vision_encoder.forward_encoder, image_left)
+            image_right_feature, _, _ = checkpoint.checkpoint(self.vision_encoder.forward_encoder, image_right)
+            image_wrist_feature, _, _ = checkpoint.checkpoint(self.vision_encoder.forward_encoder, image_wrist)
+        else:
+            with torch.no_grad():
+                image_left_feature, _, _ = self.vision_encoder.forward_encoder(image_left, mask_ratio=0.0)
+                image_right_feature, _, _ = self.vision_encoder.forward_encoder(image_right, mask_ratio=0.0)
+                image_wrist_feature, _, _ = self.vision_encoder.forward_encoder(image_wrist, mask_ratio=0.0)
+        
         if image_left_feature.type() != self.perceiver_resampler_type:
             image_left_feature = image_left_feature.type(self.perceiver_resampler_type)
             image_right_feature = image_right_feature.type(self.perceiver_resampler_type)

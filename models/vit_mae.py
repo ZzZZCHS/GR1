@@ -181,7 +181,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         return x_masked, mask, ids_restore
 
-    def forward_encoder(self, x, mask_ratio):
+    def forward_encoder(self, x, mask_ratio=0.0):
         # embed patches
         # set_trace()
         # print("patch_embed cuda: ", next(self.patch_embed.parameters()).is_cuda)

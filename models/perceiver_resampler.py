@@ -2,6 +2,8 @@ import torch
 from einops import rearrange, repeat
 from einops_exts import rearrange_many
 from torch import einsum, nn
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 
 def exists(val):
@@ -53,25 +55,50 @@ class PerceiverAttention(nn.Module):
         # attention
         sim = einsum("... i d, ... j d  -> ... i j", q, k)
         sim = sim - sim.amax(dim=-1, keepdim=True).detach()
-        attn = sim.softmax(dim=-1)
-        out = einsum("... i j, ... j d -> ... i d", attn, v)
         
         if mask is not None:
             d = mask.shape[-1]
+            perceiver_num = sim.shape[-2] // 3
             mask1 = mask[:, 0].unsqueeze(1).unsqueeze(1).unsqueeze(1)
             mask2 = mask[:, 1].unsqueeze(1).unsqueeze(1).unsqueeze(1)
-            sim1 = sim.detach().clone()
-            sim1[..., :d].masked_fill_(~mask1, -1e5)
-            sim1[..., d:] = -1e5
-            sim2 = sim.detach().clone()
-            sim2[..., :d].masked_fill_(~mask2, -1e5)
-            sim2[..., d:] = -1e5
-            attn1 = sim1.softmax(dim=-1)
-            attn2 = sim2.softmax(dim=-1)
-            out1 = einsum("... i j, ... j d -> ... i d", attn1, v)
-            out2 = einsum("... i j, ... j d -> ... i d", attn2, v)
-            out = out + out1 + out2
-
+            sim[..., perceiver_num:perceiver_num*2, :d].masked_fill_(mask1, 0)
+            sim[..., perceiver_num*2:, :d].masked_fill_(mask2, 0)
+            # sim[..., perceiver_num:perceiver_num*2, :d] += mask1
+            # sim[..., perceiver_num*2:, :d] += mask2
+            
+        
+        # tmp_sim = sim[0, :, 0, perceiver_num:perceiver_num*2, :196].mean(dim=0)
+        # for i in range(tmp_sim.shape[0]):
+        #     t_sim = tmp_sim[i].softmax(dim=-1)
+        #     tmp_attn = t_sim.reshape(14, 14).detach().cpu().numpy()
+        #     plt.figure(figsize=(8, 8))
+        #     sns.heatmap(tmp_attn, cmap="viridis", square=True, cbar=False, xticklabels=False, yticklabels=False)
+        #     plt.title("14x14 Attention Heatmap")
+        #     plt.savefig(f"object_query_{i}.png", dpi=300, bbox_inches="tight")
+        #     plt.clf()
+        # tmp_sim = sim[0, :, 0, :perceiver_num, :196].mean(dim=0)
+        # for i in range(tmp_sim.shape[0]):
+        #     t_sim = tmp_sim[i].softmax(dim=-1)
+        #     tmp_attn = t_sim.reshape(14, 14).detach().cpu().numpy()
+        #     plt.figure(figsize=(8, 8))
+        #     sns.heatmap(tmp_attn, cmap="viridis", square=True, cbar=False, xticklabels=False, yticklabels=False)
+        #     plt.title("14x14 Attention Heatmap")
+        #     plt.savefig(f"global_query_{i}.png", dpi=300, bbox_inches="tight")
+        #     plt.clf()
+        # tmp_sim = sim[0, :, 0, perceiver_num*2:, :196].mean(dim=0)
+        # for i in range(tmp_sim.shape[0]):
+        #     t_sim = tmp_sim[i].softmax(dim=-1)
+        #     tmp_attn = t_sim.reshape(14, 14).detach().cpu().numpy()
+        #     plt.figure(figsize=(8, 8))
+        #     sns.heatmap(tmp_attn, cmap="viridis", square=True, cbar=False, xticklabels=False, yticklabels=False)
+        #     plt.title("14x14 Attention Heatmap")
+        #     plt.savefig(f"place_query_{i}.png", dpi=300, bbox_inches="tight")
+        #     plt.clf()
+        # breakpoint() # torch.Size([10, 8, 1, 27, 223])
+        
+        
+        attn = sim.softmax(dim=-1)
+        out = einsum("... i j, ... j d -> ... i d", attn, v)
         out = rearrange(out, "b h t n d -> b t n (h d)", h=h)
         return self.to_out(out)
 

@@ -45,7 +45,7 @@ import robomimic.utils.env_utils as EnvUtils
 import robomimic.utils.train_utils as TrainUtils
 
 EP_LEN = 360
-NUM_SEQUENCES = 50
+NUM_SEQUENCES = 50 # !!!
 
 import h5py
 f = h5py.File('/ailab/user/huanghaifeng/work/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_data/PnPCounterToCab.hdf5', 'r')
@@ -150,6 +150,14 @@ class ModelWrapper:
         image_right_x = self.image_process_fn([image_right])
         # expand image dimension
         image_right_x = image_right_x.unsqueeze(1).to(dtype=self.cast_type)
+            
+
+        gripper = obs['robot0_eye_in_hand_image'][-1].transpose(1, 2, 0)
+        gripper = Image.fromarray((gripper * 255).astype(np.uint8))
+        gripper = self.image_process_fn([gripper])
+        # expand image dimension
+        gripper = gripper.unsqueeze(1).to(dtype=self.cast_type)
+        
         
         mask_names = ['robot0_agentview_left_mask', 'robot0_agentview_right_mask', 'robot0_eye_in_hand_mask']
         masks = None
@@ -162,15 +170,17 @@ class ModelWrapper:
                 target_obj_mask = torch.nn.functional.interpolate(target_obj_mask, size=(14, 14), mode='bicubic', align_corners=True)
                 target_place_mask = torch.nn.functional.interpolate(target_place_mask, size=(14, 14), mode='bicubic', align_corners=True)
                 masks.extend([target_obj_mask, target_place_mask])
+                
+                tmp_mask = torch.tensor(tmp_mask).squeeze(-1).to(torch.uint8)
+                tmp_mask = torch.nn.functional.interpolate(tmp_mask, size=(224, 224), mode='nearest').unsqueeze(2)
+                if 'left' in mask_name:
+                    image_left_x = torch.cat([image_left_x, tmp_mask[:1]], dim=2)
+                elif 'right' in mask_name:
+                    image_right_x = torch.cat([image_right_x, tmp_mask[:1]], dim=2)
+                else:
+                    gripper = torch.cat([gripper, tmp_mask[:1]], dim=2)
             masks = torch.stack(masks, dim=1).flatten(-2, -1) > 0
             masks = masks.squeeze(2)
-            
-
-        gripper = obs['robot0_eye_in_hand_image'][-1].transpose(1, 2, 0)
-        gripper = Image.fromarray((gripper * 255).astype(np.uint8))
-        gripper = self.image_process_fn([gripper])
-        # expand image dimension
-        gripper = gripper.unsqueeze(1).to(dtype=self.cast_type)
 
         # expand text dimension
         text_x = self.text_process_fn([goal])
@@ -379,6 +389,13 @@ def run_rollout(
                 if (tmp_seg == name2id[target_place_str]).sum() == 0 and target_place_str == "container_main" and name2id[target_place_str] == name2id[None] - 1:
                     tmp_mask[tmp_seg == name2id[None]] = 2
             # tmp_mask = tmp_mask.astype(np.float32) / 2.
+            # obj_mask = np.zeros((512, 512, 3), dtype=np.uint8)
+            # obj_mask[tmp_mask == 1, 0] = 255
+            # place_mask = np.zeros((512, 512, 3), dtype=np.uint8)
+            # place_mask[tmp_mask == 2, 2] = 255
+            # Image.fromarray(obj_mask).save('obj_mask.jpg')
+            # Image.fromarray(place_mask).save('place_mask.jpg')
+            # breakpoint()
             tmp_mask = np.expand_dims(tmp_mask, axis=0)
             tmp_mask = np.expand_dims(tmp_mask, axis=0).repeat(ob_dict[f"{cam_name}_image"].shape[0], axis=0)
             masked_dict[f"{cam_name}_mask"] = tmp_mask

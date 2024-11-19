@@ -115,7 +115,9 @@ def train_one_epoch_calvin(
         text_tokens = batch_calvin['text_tokens'].to(device_id, non_blocking=True)
         states = batch_calvin['states'].to(device_id, non_blocking=True)
         actions = batch_calvin['actions'].to(device_id, non_blocking=True)
-        masks = batch_calvin['masks'].to(device_id, non_blocking=True)
+        masks = batch_calvin['masks']
+        if masks is not None:
+            masks = masks.to(device_id, non_blocking=True)
         
         input_image_left = images_left[:, :args.sequence_length, :]
         input_image_right = images_right[:, :args.sequence_length, :]
@@ -123,7 +125,8 @@ def train_one_epoch_calvin(
         input_text_token = text_tokens[:, :args.sequence_length, :]
         input_state = states[:, :args.sequence_length, :]
         label_action = actions[:, :args.sequence_length, :].unsqueeze(-2)
-        masks = masks[:, :args.sequence_length, :, :].flatten(0, 1)
+        if masks is not None:
+            masks = masks[:, :args.sequence_length, :, :].flatten(0, 1)
         
         batch_data_time_m.update(time.time() - last)
 
@@ -141,9 +144,9 @@ def train_one_epoch_calvin(
         loss_arm_action = torch.nn.functional.smooth_l1_loss(arm_action, label_action[:, :, :, :-1])
         loss_gripper_action = torch.nn.functional.binary_cross_entropy(gripper_action, label_action[:, :, :, -1:])
 
-        label_image_left = images_left[:, args.future_steps:, :].flatten(0, 1)
-        label_image_right = images_right[:, args.future_steps:, :].flatten(0, 1)
-        label_image_wrist = images_wrist[:, args.future_steps:, :].flatten(0, 1)
+        label_image_left = images_left[:, args.future_steps:, :3].flatten(0, 1)
+        label_image_right = images_right[:, args.future_steps:, :3].flatten(0, 1)
+        label_image_wrist = images_wrist[:, args.future_steps:, :3].flatten(0, 1)
         label_image_left = patchify(label_image_left, patch_size=args.patch_size)
         label_image_right = patchify(label_image_right, patch_size=args.patch_size)
         label_image_wrist = patchify(label_image_wrist, patch_size=args.patch_size)
