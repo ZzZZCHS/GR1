@@ -19,6 +19,7 @@ from models.gr1 import GR1Agent
 from robomimic.config import config_factory
 import robomimic.utils.train_utils as TrainUtils
 import robomimic.utils.obs_utils as ObsUtils
+from robomimic.utils.ground_utils import GroundUtils
 
 
 def random_seed(seed=42, rank=0):
@@ -130,6 +131,11 @@ def main():
     
     exp_dir = os.path.dirname(args.resume_from_checkpoint)
     eval_log_dir = os.path.join(exp_dir, args.run_name)
+    
+    if args.use_glamm:
+        grounding_model = GroundUtils(device=device_id)
+    else:
+        grounding_model = None
 
     all_logs = eval_one_epoch_calvin_ddp(
         args=args,
@@ -142,7 +148,8 @@ def main():
         debug=args.visualize,
         reset=args.reset,
         diverse_inst=args.diverse_inst,
-        robocasa_config=config
+        robocasa_config=config,
+        grounding_model=grounding_model
     )
     
     if device_id == 0:

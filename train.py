@@ -198,6 +198,7 @@ def main():
     ddp_model.train()
     if args.real_data:
         resume_from_epoch = 0 
+    save_interval = max(args.num_epochs // 5, 1)
     for epoch in range(resume_from_epoch, args.num_epochs):
         calvin_dataset.set_epoch(epoch)
         calvin_loader = calvin_dataset.dataloader
@@ -214,7 +215,7 @@ def main():
             image_processor=preprocess_image_fn
         )
 
-        if args.rank == 0 and args.save_checkpoint:
+        if args.rank == 0 and args.save_checkpoint and epoch % save_interval == save_interval - 1:
             if not os.path.exists(f"{args.checkpoint_path}/exp/{args.run_name}"):
                 os.makedirs(f"{args.checkpoint_path}/exp/{args.run_name}")
 

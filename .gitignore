@@ -166,3 +166,4 @@ cython_debug/
 MUJOCO_LOG.TXT
 wandb/settings
 *.png
+openai

@@ -18,6 +18,7 @@ resume_from_checkpoint=${ckpt_dir}/${ep}.pth
 val_domain=$4
 tmp_run_name=ep${ep}_${val_domain}
 addmask=$5
+use_glamm=$6
 
 IFS='/' read -ra path_parts <<< "$resume_from_checkpoint"
 run_name="${path_parts[-2]}"
@@ -51,10 +52,11 @@ torchrun --nnodes=${node} --nproc_per_node=${node_num} --master_port=10081 eval_
     --transformer_hidden_dim $transformer_hidden_dim \
     --transformer_heads $transformer_heads \
     --run_name $tmp_run_name \
-    --config "configs/noadd.json" \
+    --config "configs/addmask_jointtrain.json" \
     --val_domain $val_domain \
     --addmask $addmask \
-    --resume_from_checkpoint ${resume_from_checkpoint} | tee ${log_file}
+    --use_glamm $use_glamm \
+    --resume_from_checkpoint ${resume_from_checkpoint} | tee ${log_file} \
     # --calvin_dataset ${calvin_dataset_path} \
     # --calvin_conf_path ${calvin_conf_path} \
 

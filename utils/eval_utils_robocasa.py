@@ -257,7 +257,7 @@ class ModelWrapper:
         return action
 
 
-def evaluate_policy_ddp(model, env, epoch, calvin_conf_path, eval_log_dir=None, debug=False, create_plan_tsne=False, reset=False, diverse_inst=False, horizon=500, args=None):
+def evaluate_policy_ddp(model, env, epoch, calvin_conf_path, eval_log_dir=None, debug=False, create_plan_tsne=False, reset=False, diverse_inst=False, horizon=500, args=None, grounding_model=None):
     device_num = int(torch.distributed.get_world_size())
     device_id = torch.distributed.get_rank()
     # assert NUM_SEQUENCES % device_num == 0
@@ -290,7 +290,8 @@ def evaluate_policy_ddp(model, env, epoch, calvin_conf_path, eval_log_dir=None, 
                 initial_state=initial_state,
                 video_writer=video_writer,
                 ep_i=ep_i,
-                args=args
+                args=args,
+                grounding_model=grounding_model
             )
         except Exception as e:
             print(traceback.format_exc())
@@ -331,7 +332,8 @@ def run_rollout(
         video_skip=5,
         terminate_on_success=False,
         ep_i=0,
-        args=None
+        args=None,
+        grounding_model=None
     ):
     env.env.env.add_object_num = 0
     ob_dict = env.reset_to(initial_state)
@@ -354,51 +356,72 @@ def run_rollout(
     
     masked_dict = {}
     if args.addmask:
-        # print('getting mask...')
-        image_size = 256
-        target_obj_str = env.env.env.target_obj_str
-        if target_obj_str == "obj":
-            target_obj_str += "_main"
-        target_place_str = env.env.env.target_place_str
         
-        geom2body_id_mapping = {geom_id: body_id for geom_id, body_id in enumerate(env.env.env.sim.model.geom_bodyid)}
-        name2id = env.env.env.sim.model._body_name2id
-        for cam_name in camera_names:
-            seg = env.env.env.sim.render(
-                camera_name=cam_name,
-                width=image_size,
-                height=image_size,
-                depth=False,
-                segmentation=True
-            )
-            seg = seg[::-1, :, 1]
-            tmp_seg = (
-                np.fromiter(
-                    map(
-                        lambda x: geom2body_id_mapping.get(x, -1),
-                        seg.flatten()
-                    ),
-                    dtype=np.int32
-                ).reshape(image_size, image_size)
-            )
-            tmp_mask = np.zeros(tmp_seg.shape, dtype=np.uint8)
-            for tmp_target_obj_str in target_obj_str.split('/'):
-                tmp_mask[tmp_seg == name2id[tmp_target_obj_str]] = 1
-            if target_place_str:
-                tmp_mask[tmp_seg == name2id[target_place_str]] = 2
-                if (tmp_seg == name2id[target_place_str]).sum() == 0 and target_place_str == "container_main" and name2id[target_place_str] == name2id[None] - 1:
-                    tmp_mask[tmp_seg == name2id[None]] = 2
-            # tmp_mask = tmp_mask.astype(np.float32) / 2.
-            # obj_mask = np.zeros((512, 512, 3), dtype=np.uint8)
-            # obj_mask[tmp_mask == 1, 0] = 255
-            # place_mask = np.zeros((512, 512, 3), dtype=np.uint8)
-            # place_mask[tmp_mask == 2, 2] = 255
-            # Image.fromarray(obj_mask).save('obj_mask.jpg')
-            # Image.fromarray(place_mask).save('place_mask.jpg')
-            # breakpoint()
-            tmp_mask = np.expand_dims(tmp_mask, axis=0)
-            tmp_mask = np.expand_dims(tmp_mask, axis=0).repeat(ob_dict[f"{cam_name}_image"].shape[0], axis=0)
-            masked_dict[f"{cam_name}_mask"] = tmp_mask
+        if grounding_model is not None:
+            obs_keys = ["robot0_agentview_left_image", "robot0_agentview_right_image", "robot0_eye_in_hand_image"]
+            masked_dict = {}
+            
+            for obs_key in camera_names:
+                tmp_img = ob_dict[obs_key][0]
+                tmp_img = np.uint8(tmp_img*255).transpose(1, 2, 0)[:, :, :3]
+                # tmp_mask = np.zeros(tmp_img.shape[:2], dtype=np.uint8)
+                result_caption, pred_masks, phrases = grounding_model.inference(env._ep_lang_str, tmp_img)
+                binary_pred_masks = pred_masks[0].cpu() > 0
+                tmp_mask = (binary_pred_masks[0].numpy()/2).astype(np.float32)
+                if binary_pred_masks.shape[0] > 1:
+                    tmp_mask[binary_pred_masks[1]] = 1.
+                # tmp_mask = (tmp_mask * 255).astype(np.uint8)
+                # Image.fromarray(tmp_mask).save('tmp_mask.jpg')
+                # breakpoint()
+                tmp_mask = np.expand_dims(tmp_mask, axis=0)
+                tmp_mask = np.expand_dims(tmp_mask, axis=0).repeat(ob_dict[obs_key].shape[0], axis=0)
+                masked_dict[obs_key.replace('image', 'mask')] = tmp_mask
+        else:
+            # print('getting mask...')
+            image_size = 256
+            target_obj_str = env.env.env.target_obj_str
+            if target_obj_str == "obj":
+                target_obj_str += "_main"
+            target_place_str = env.env.env.target_place_str
+            
+            geom2body_id_mapping = {geom_id: body_id for geom_id, body_id in enumerate(env.env.env.sim.model.geom_bodyid)}
+            name2id = env.env.env.sim.model._body_name2id
+            for cam_name in camera_names:
+                seg = env.env.env.sim.render(
+                    camera_name=cam_name,
+                    width=image_size,
+                    height=image_size,
+                    depth=False,
+                    segmentation=True
+                )
+                seg = seg[::-1, :, 1]
+                tmp_seg = (
+                    np.fromiter(
+                        map(
+                            lambda x: geom2body_id_mapping.get(x, -1),
+                            seg.flatten()
+                        ),
+                        dtype=np.int32
+                    ).reshape(image_size, image_size)
+                )
+                tmp_mask = np.zeros(tmp_seg.shape, dtype=np.uint8)
+                for tmp_target_obj_str in target_obj_str.split('/'):
+                    tmp_mask[tmp_seg == name2id[tmp_target_obj_str]] = 1
+                if target_place_str:
+                    tmp_mask[tmp_seg == name2id[target_place_str]] = 2
+                    if (tmp_seg == name2id[target_place_str]).sum() == 0 and target_place_str == "container_main" and name2id[target_place_str] == name2id[None] - 1:
+                        tmp_mask[tmp_seg == name2id[None]] = 2
+                # tmp_mask = tmp_mask.astype(np.float32) / 2.
+                # obj_mask = np.zeros((512, 512, 3), dtype=np.uint8)
+                # obj_mask[tmp_mask == 1, 0] = 255
+                # place_mask = np.zeros((512, 512, 3), dtype=np.uint8)
+                # place_mask[tmp_mask == 2, 2] = 255
+                # Image.fromarray(obj_mask).save('obj_mask.jpg')
+                # Image.fromarray(place_mask).save('place_mask.jpg')
+                # breakpoint()
+                tmp_mask = np.expand_dims(tmp_mask, axis=0)
+                tmp_mask = np.expand_dims(tmp_mask, axis=0).repeat(ob_dict[f"{cam_name}_image"].shape[0], axis=0)
+                masked_dict[f"{cam_name}_mask"] = tmp_mask
     
     for step_i in range(horizon): #LogUtils.tqdm(range(horizon)):
         # for cam_name in camera_names:
@@ -484,7 +507,7 @@ def run_rollout(
     return results
 
 
-def eval_one_epoch_calvin_ddp(args, model, dataset_path, image_processor, tokenizer, eval_log_dir=None, debug=False, future_act_len=-1, reset=False, diverse_inst=False, robocasa_config=None):
+def eval_one_epoch_calvin_ddp(args, model, dataset_path, image_processor, tokenizer, eval_log_dir=None, debug=False, future_act_len=-1, reset=False, diverse_inst=False, robocasa_config=None, grounding_model=None):
     envs = make_env(dataset_path, robocasa_config)
     cast_dtype = get_cast_dtype(args.precision)
     hist_len = 10
@@ -492,7 +515,7 @@ def eval_one_epoch_calvin_ddp(args, model, dataset_path, image_processor, tokeni
     
     all_env_logs = OrderedDict()
     for env, horizon in envs:
-        all_env_logs[env.name] = evaluate_policy_ddp(wrapped_model, env, 0, args.calvin_conf_path, eval_log_dir=eval_log_dir, debug=debug, reset=reset, diverse_inst=diverse_inst, horizon=horizon, args=args)
+        all_env_logs[env.name] = evaluate_policy_ddp(wrapped_model, env, 0, args.calvin_conf_path, eval_log_dir=eval_log_dir, debug=debug, reset=reset, diverse_inst=diverse_inst, horizon=horizon, args=args, grounding_model=None)
     return all_env_logs
 
 

@@ -84,7 +84,7 @@
         "hdf5_load_next_obs": false,
         "hdf5_normalize_obs": false,
         "hdf5_filter_key": null,
-        "seq_length": 10,
+        "seq_length": 30,
         "pad_seq_length": true,
         "frame_stack": 10,
         "pad_frame_stack": true,

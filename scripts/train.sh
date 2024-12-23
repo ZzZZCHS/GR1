@@ -6,16 +6,16 @@ data_dir='/ailab/user/huanghaifeng/work/robocasa_exps_haifeng/robocasa/datasets/
 node=1
 node_num=8
 
-exp_name=train_real
+exp_name=train_addmask
 batch_size=8
 lr=5e-4
 weight_decay=1e-2
-epochs=50
+epochs=5
 transformer_layers=6
 transformer_hidden_dim=512
 transformer_heads=8
 num_resampler_query=9
-addmask=False
+addmask=True
 
 run_name="$(date +"%Y%m%d_%H%M%S")"_"$exp_name"_bs"$batch_size"_lr"$lr"_ep"$epochs"_decay"$weight_decay"_layers"$transformer_layers"_dim"$transformer_hidden_dim"_heads"$transformer_heads"_samplernum"$num_resampler_query"_addmask"$addmask"
 
@@ -48,7 +48,7 @@ torchrun --nnodes=${node} --nproc_per_node=${node_num} --master_port=${MASTER_PO
     --transformer_hidden_dim $transformer_hidden_dim \
     --transformer_heads $transformer_heads \
     --save_checkpoint \
-    --config "configs/real_data.json" \
+    --config "configs/addmask_jointtrain.json" \
     --addmask $addmask \
     # --report_to_wandb
     # --data_dir "$data_dir"

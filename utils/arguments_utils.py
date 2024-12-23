@@ -163,6 +163,12 @@ def get_args(is_eval=False):
         type=str2bool,
         default=False
     )
+    
+    parser.add_argument(
+        "--use_glamm",
+        type=str2bool,
+        default=False
+    )
 
     # history window size when evaluating, for FC head equals to hist_window, for LSTM head means refresh frequency
     parser.add_argument(
