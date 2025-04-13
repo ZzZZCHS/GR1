@@ -50,7 +50,7 @@ torchrun --nnodes=${node} --nproc_per_node=${node_num} --master_port=${MASTER_PO
     --save_checkpoint \
     --config "configs/addmask_jointtrain.json" \
     --addmask $addmask \
-    # --report_to_wandb
+    --report_to_wandb
     # --data_dir "$data_dir"
     # --calvin_dataset "$calvin_dataset_path" \
 

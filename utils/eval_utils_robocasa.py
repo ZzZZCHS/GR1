@@ -361,11 +361,14 @@ def run_rollout(
             obs_keys = ["robot0_agentview_left_image", "robot0_agentview_right_image", "robot0_eye_in_hand_image"]
             masked_dict = {}
             
-            for obs_key in camera_names:
+            for obs_key in obs_keys:
                 tmp_img = ob_dict[obs_key][0]
                 tmp_img = np.uint8(tmp_img*255).transpose(1, 2, 0)[:, :, :3]
                 # tmp_mask = np.zeros(tmp_img.shape[:2], dtype=np.uint8)
+                time0 = time.time()
                 result_caption, pred_masks, phrases = grounding_model.inference(env._ep_lang_str, tmp_img)
+                time1 = time.time()
+                print("time1 - time0 =", time1 - time0)
                 binary_pred_masks = pred_masks[0].cpu() > 0
                 tmp_mask = (binary_pred_masks[0].numpy()/2).astype(np.float32)
                 if binary_pred_masks.shape[0] > 1:
@@ -423,6 +426,9 @@ def run_rollout(
                 tmp_mask = np.expand_dims(tmp_mask, axis=0).repeat(ob_dict[f"{cam_name}_image"].shape[0], axis=0)
                 masked_dict[f"{cam_name}_mask"] = tmp_mask
     
+    end_step = horizon - 1
+    total_model_time = 0
+    total_env_time = 0
     for step_i in range(horizon): #LogUtils.tqdm(range(horizon)):
         # for cam_name in camera_names:
         #     depth_name = f"{cam_name}_depth"
@@ -447,7 +453,9 @@ def run_rollout(
         
         # get action from policy
         # ac = model(ob=ob_dict) #, return_ob=True)
+        time2 = time.time()
         action = model.step(ob_dict, lang_annotation, step_i)
+        time3 = time.time()
         # action[:6] *= 2 # !!!
         action[:6] = np.clip(action[:6], a_min=-1., a_max=1.)
         # try:
@@ -457,6 +465,10 @@ def run_rollout(
 
         # play action
         ob_dict, r, done, info = env.step(action)
+        time4 = time.time()
+        
+        total_model_time += time3 - time2
+        total_env_time += time4 - time3
 
         # compute reward
         rews.append(r)
@@ -484,6 +496,9 @@ def run_rollout(
                 text2 = f"Success: {success['task']}"
                 position2 = (10, 100)
                 cv2.putText(frame, text2, position2, font, font_scale, color, thickness)
+                text3 = f"Contact: {max(rews)}"
+                position3 = (10, 150)
+                cv2.putText(frame, text3, position3, font, font_scale, color, thickness)
                 video_frames.append(frame)
             video_count += 1
 
@@ -491,6 +506,9 @@ def run_rollout(
             end_step = step_i
             break
 
+    time3 = time.time()
+    print(f'average model time: {total_model_time / (end_step + 1)}')
+    print(f'average env time: {total_env_time / (end_step + 1)}')
 
     if video_writer is not None:
         for frame in video_frames:
@@ -515,7 +533,7 @@ def eval_one_epoch_calvin_ddp(args, model, dataset_path, image_processor, tokeni
     
     all_env_logs = OrderedDict()
     for env, horizon in envs:
-        all_env_logs[env.name] = evaluate_policy_ddp(wrapped_model, env, 0, args.calvin_conf_path, eval_log_dir=eval_log_dir, debug=debug, reset=reset, diverse_inst=diverse_inst, horizon=horizon, args=args, grounding_model=None)
+        all_env_logs[env.name] = evaluate_policy_ddp(wrapped_model, env, 0, args.calvin_conf_path, eval_log_dir=eval_log_dir, debug=debug, reset=reset, diverse_inst=diverse_inst, horizon=horizon, args=args, grounding_model=grounding_model)
     return all_env_logs
 
 

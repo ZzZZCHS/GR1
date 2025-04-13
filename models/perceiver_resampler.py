@@ -61,8 +61,9 @@ class PerceiverAttention(nn.Module):
             perceiver_num = sim.shape[-2] // 3
             mask1 = mask[:, 0].unsqueeze(1).unsqueeze(1).unsqueeze(1)
             mask2 = mask[:, 1].unsqueeze(1).unsqueeze(1).unsqueeze(1)
-            sim[..., perceiver_num:perceiver_num*2, :d].masked_fill_(mask1, 0)
-            sim[..., perceiver_num*2:, :d].masked_fill_(mask2, 0)
+            # sim[..., perceiver_num:perceiver_num*2, :d].masked_fill_(mask1, 0)
+            # sim[..., perceiver_num*2:, :d].masked_fill_(mask2, 0)
+            
             # sim[..., perceiver_num:perceiver_num*2, :d] += mask1
             # sim[..., perceiver_num*2:, :d] += mask2
             
