@@ -1,7 +1,7 @@
 set -x
 export MASTER_PORT=$((54000 + $RANDOM % 10000))
 # calvin_dataset_path='/ailab/user/huanghaifeng/work/robocasa_exps_haifeng/GR1/data/calvin_debug_dataset'
-data_dir='/ailab/user/huanghaifeng/work/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_data'
+data_dir='/ailab/group/pjlab-smartbot/chenxinyi/haifeng/robocasa_exps_haifeng/robocasa/datasets/v0.1/generated_data'
 
 node=1
 node_num=8
@@ -29,7 +29,7 @@ torchrun --nnodes=${node} --nproc_per_node=${node_num} --master_port=${MASTER_PO
     --gripper_pad 4 \
     --bf16_module "vision_encoder" \
     --dataset_resampled \
-    --workers 24 \
+    --workers 12 \
     --lr_scheduler cosine \
     --save_every_iter 500000 \
     --sequence_length 10 \
@@ -48,7 +48,7 @@ torchrun --nnodes=${node} --nproc_per_node=${node_num} --master_port=${MASTER_PO
     --transformer_hidden_dim $transformer_hidden_dim \
     --transformer_heads $transformer_heads \
     --save_checkpoint \
-    --config "configs/addmask_jointtrain.json" \
+    --config "configs/addmask_joint.json" \
     --addmask $addmask \
     --report_to_wandb
     # --data_dir "$data_dir"

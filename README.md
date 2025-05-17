@@ -13,6 +13,14 @@ add `from collections.abc import *` in collections/__init__.py
 
 ```
 
-### Path setup
-ln -s /mnt/hwfile/OpenRobotLab/chenyilun/pretrain/ ./
+
+## Setup
+Please follow the main setup [instruction](https://github.com/ZzZZCHS/RoboGround?tab=readme-ov-file#-environment-setup) to prepare RoboGround's conda environment.
+
+```bash
+conda activate roboground
+
+# additional packages to install
+pip install git+https://github.com/openai/CLIP.git
+```
 

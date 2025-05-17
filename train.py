@@ -125,7 +125,7 @@ def main():
     model._init_model_type()
     print(sum(p.numel() for p in model.parameters() if p.requires_grad))
     
-    ddp_model = DDP(model, device_ids=[device_id], find_unused_parameters=True)
+    ddp_model = DDP(model, device_ids=[device_id], find_unused_parameters=False)
 
     optimizer = torch.optim.AdamW([p for p in ddp_model.parameters() if p.requires_grad], lr=args.learning_rate, weight_decay=args.weight_decay)  # TODO make sure the parameters which need to be optimized are passing
 
