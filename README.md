@@ -12,14 +12,9 @@ conda activate roboground
 pip install git+https://github.com/openai/CLIP.git
 ```
 
-## Training
+## Training & Evaluation
 
 Training the model takes approximately 7 days using 8 NVIDIA RTX 4090 GPUs.
 
-Simply start training with:
-```bash
-bash scripts/train.sh
-```
-
-## Inference
+Simply start training with: `bash scripts/train.sh`. And then run the evaluation using: `bash scripts/eval.sh`.
 

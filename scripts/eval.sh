@@ -52,7 +52,7 @@ torchrun --nnodes=${node} --nproc_per_node=${node_num} --master_port=10081 eval_
     --transformer_hidden_dim $transformer_hidden_dim \
     --transformer_heads $transformer_heads \
     --run_name $tmp_run_name \
-    --config "configs/addmask_jointtrain.json" \
+    --config "configs/addmask_joint.json" \
     --val_domain $val_domain \
     --addmask $addmask \
     --use_glamm $use_glamm \
